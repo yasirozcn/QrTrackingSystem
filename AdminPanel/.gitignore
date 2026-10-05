@@ -1,0 +1,11 @@
+/node_modules
+/.next/
+/out/
+/build
+*.tsbuildinfo
+next-env.d.ts
+.DS_Store
+*.log
+# gizli ayarlar (şablon hariç)
+.env*
+!.env.example

@@ -1,0 +1,10 @@
+.DS_Store
+node_modules/
+.env
+.env*.local
+!.env.example
+*.log
+.idea/
+.vscode/
+# görev planı (Jira'ya aktarılır, depoya girmez)
+tasks.md

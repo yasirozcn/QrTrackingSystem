@@ -1,0 +1,35 @@
+# Ekip için ORTAK GELİŞTİRME veritabanı (AWS Lightsail sunucusunda çalışır).
+# Canlı (production) veritabanından tamamen ayrıdır: ayrı konteyner, ayrı volume, ayrı port (5433).
+# Kurulum: bash kur.sh   (ayrıntı: README.md)
+name: izmirfen-devdb
+
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: izmirfen_owner          # şema sahibi (tablo oluşturur/değiştirir) — yalnızca proje sahibi
+      POSTGRES_PASSWORD: ${OWNER_PASSWORD:?.env içinde OWNER_PASSWORD tanımlayın}
+      POSTGRES_DB: izmirfen
+      APP_USER: izmirfen_app                 # ekibin kullandığı kullanıcı (yalnızca veri okuma/yazma)
+      APP_PASSWORD: ${APP_PASSWORD:?.env içinde APP_PASSWORD tanımlayın}
+      TZ: Europe/Istanbul
+    # Kendi imzalı SSL sertifikasını (yoksa) üretip Postgres'i zorunlu SSL ile başlatır.
+    entrypoint: ["bash", "/opt/izmirfen/ssl-entrypoint.sh"]
+    ports:
+      - "5433:5432"                          # İNTERNETE AÇIK — yalnızca SSL + şifre (pg_hba.conf)
+    volumes:
+      - devdata:/var/lib/postgresql/data
+      - devssl:/var/lib/postgresql/ssl
+      - ./ssl-entrypoint.sh:/opt/izmirfen/ssl-entrypoint.sh:ro
+      - ./pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./init-roles.sh:/docker-entrypoint-initdb.d/10-init-roles.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U izmirfen_owner -d izmirfen"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  devdata:
+  devssl:
