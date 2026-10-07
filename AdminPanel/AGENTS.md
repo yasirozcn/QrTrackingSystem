@@ -10,151 +10,260 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # AGENTS.md — AdminPanel (web paneli + mobil API)
 
-Önce kökteki [`../AGENTS.md`](../AGENTS.md) dosyasını okuyun: protokol, API sözleşmesi ve iş kuralları oradadır ve **bağlayıcıdır**.
-Bu dosya AdminPanel'in nasıl kurulduğunu ve hangi kurallarla geliştirildiğini anlatır.
+Önce kökteki [`../AGENTS.md`](../AGENTS.md) dosyasını okuyun: protokol, API sözleşmesi, iş kuralları ve **referans kaynak kodu (§0)** oradadır ve **bağlayıcıdır**.
+Bu dosya AdminPanel'in nasıl kurulduğunu, **her dosyaya ne yazılacağını** ve hangi kurallarla geliştirildiğini anlatır.
+
+**Referans:** her dosyanın karşılığı `https://raw.githubusercontent.com/yasirozcn/FenBahceleri/5387bef/AdminPanel/<aynı yol>` — yalnızca web üzerinden okunur, **bilgisayara indirilmez** (kök AGENTS.md §0.1). Yazmadan önce okuyun; kök AGENTS.md §0.2'deki farkları uygulayın.
+**Prompt önceliği:** görev referansta olmayan bir özellik veya var olan bir özelliğin değişmesini isterse prompt esastır (kök AGENTS.md §0.3). Değişmeyenler: `/api/mobile/*` sözleşmesi (yol, istek/yanıt, `{ error, code }`), JWT rolleri, `protocol.ts`, `scan.ts` doğrulama sırası ve BLE kontrolü, SQL'in yalnızca `repo.ts`'te olması, şema. Yeni sayfa/action/route eklenirse §2 ağacı ve §4–§5 tabloları aynı işte güncellenir.
+
+---
 
 ## 1. Teknoloji
 
 | Katman | Seçim |
 | --- | --- |
 | Çatı | **Next.js 16** (App Router, Turbopack, Server Components, Server Actions), React 19, TypeScript (strict) |
-| Stil | Tailwind CSS 4 (`src/app/globals.css` içinde `.btn`, `.card`, `.table`, `.badge`, `.input` yardımcı sınıfları) |
+| Stil | Tailwind CSS 4 — tasarım belirteçleri ve yardımcı sınıflar `src/app/globals.css` içinde (`.btn`, `.btn-primary`, `.btn-secondary`, `.btn-danger`, `.input`, `.card`, `.table`, `.badge`, `.page-title`, `.page-sub`) |
 | Veritabanı | PostgreSQL 17 — **AWS'deki ortak geliştirme veritabanı** (SSL, port 5433); sürücü `pg` (ORM yok, el yazımı SQL). Yerelde veritabanı kurulmaz |
-| Doğrulama | `zod` (her API gövdesi) |
+| Doğrulama | `zod` (her API gövdesi ve her form) |
 | Kimlik | `jose` (JWT HS256), `bcryptjs` (şifre özeti, maliyet 10) |
-| Canlı | Docker (`output: "standalone"`) + Caddy (otomatik HTTPS) — ileride `deploy/` |
+| Canlı | Docker (`output: "standalone"`) + Caddy (otomatik HTTPS) — `deploy/` (son görevler) |
 
-Paket yöneticisi **npm** (`package-lock.json`; mobil uygulamayla aynı). Yeni paket: `npm install <paket>`; kilit dosyası commit'lenir.
+Paket yöneticisi **npm** (`package-lock.json`). Tüm gerekli paketler **kurulu**; yeni paket eklenmez (referans da başka paket kullanmaz). Gerekirse önce proje sahibine sorun.
 
-**Şablon hazır (başlangıç durumu).** Bu klasör çalışan bir Next.js 16 projesidir: tüm bağımlılıklar mevcut panelle aynı sürümlerde, veritabanı katmanı tamam,
-geçici başlangıç sayfası ve örnek uç nokta AWS'deki ortak veritabanından veri okur. İlk çalıştırma:
-```bash
-npm install
-cp .env.example .env.local      # DATABASE_URL (proje sahibinden). AUTH_SECRET şimdilik boş (kök AGENTS.md §5.1)
-npm run db:check                # "SSL: açık", 11 tablo
-npm run dev                     # http://localhost:3000 → "Ortak veritabanına bağlı" · /api/health → JSON
-```
+## 2. Klasör yapısı (hedef ağaç)
 
-## 2. Klasör yapısı
-
-**Hedef ağaç** — geliştirme bittiğinde AdminPanel tam olarak budur (kök AGENTS.md §0). ✅ = depoda hazır · ⏳ = ekip geliştirecek.
+Geliştirme bittiğinde AdminPanel tam olarak budur. ✅ = depoda hazır (değiştirmeyin) · ⏳ = ekip geliştirecek.
 Yollar ve dosya adları değiştirilmez; listede olmayan dosya eklenmeden önce proje sahibine sorulur.
 
 ```
 AdminPanel/
-├── AGENTS.md, CLAUDE.md, README.md⏳, .env.example✅, .gitignore✅
-├── package.json✅, package-lock.json✅, next.config.ts✅, tsconfig.json✅, eslint.config.mjs✅, postcss.config.mjs✅
-├── Dockerfile⏳, .dockerignore⏳                      canlı imaj (standalone)
-├── public/.gitkeep✅
-├── db/schema.sql✅                                    tek şema dosyası (yalnızca proje sahibi uygular)
-├── deploy/⏳                                          canlı: docker-compose.yml, Caddyfile, .env.example, sunucu-hazirla.sh, yedek-al.sh
+├── AGENTS.md, CLAUDE.md ✅ · README.md ⏳ · .env.example ✅ · .gitignore ✅
+├── package.json ✅ (uçtan uca test eklenirken "test:e2e" betiği eklenir) · package-lock.json ✅
+├── next.config.ts ✅ · tsconfig.json ✅ · eslint.config.mjs ✅ · postcss.config.mjs ✅
+├── Dockerfile ⏳ · .dockerignore ⏳
+├── public/.gitkeep ✅
+├── db/schema.sql ✅                          tek şema dosyası (yalnızca proje sahibi uygular)
+├── deploy/ ⏳                         docker-compose.yml · Caddyfile · .env.example · sunucu-hazirla.sh · yedek-al.sh
 ├── scripts/
-│   ├── db-check.mjs✅                                 ortak veritabanı bağlantı kontrolü
-│   ├── db-setup.mjs✅                                 şemayı uygular (DATABASE_OWNER_URL)
-│   ├── create-admin.mjs✅                             yönetici/kiosk hesabı (şifre gizli sorulur)
-│   └── e2e-test.mjs⏳                                 uçtan uca API testi (kendi verisini oluşturur ve siler)
+│   ├── db-check.mjs ✅                        ortak veritabanı bağlantı kontrolü (bu projeye özgü)
+│   ├── db-setup.mjs ✅                        şemayı uygular (DATABASE_OWNER_URL — yalnızca proje sahibi)
+│   ├── create-admin.mjs ✅                    ADMIN/KIOSK hesabı açar (şifre gizli sorulur)
+│   └── e2e-test.mjs ⏳                uçtan uca API testi (kendi verisini oluşturur ve siler)
 └── src/
     ├── lib/
-    │   ├── db/pg.ts✅, db/repo.ts✅, db/types.ts✅, db/seed.ts✅
-    │   ├── config.ts⏳                                ortam değişkenleri (tek yer) — authSecret dahil (§5.1)
-    │   ├── auth.ts⏳                                  signToken, verifyToken, bearerClaims (JWT HS256)
-    │   ├── session.ts⏳                               panel çerezi fb_admin: createWebSession, destroyWebSession, getWebAdmin, requireWebAdmin
-    │   ├── api.ts⏳                                   ApiError, ok, handler, body, requireStudent, requireKioskAdmin, rateLimit, clientIp
-    │   ├── protocol.ts⏳                              QR/BLE/imza — mobildeki ile birebir aynı
-    │   ├── scan.ts⏳                                  processScan, manualEvent, REJECT_MESSAGES
-    │   └── sms.ts⏳                                   formatTime, formatDateTime, buildSmsBody, dispatchSms
+    │   ├── db/pg.ts ✅ · db/types.ts ✅ · db/seed.ts ✅
+    │   ├── db/repo.ts ✅ (+ kiosk silme ve kiosk tablet hesapları için 4 fonksiyon eklenecek — §3.2)
+    │   ├── config.ts ⏳               ortam değişkenleri (tek yer)
+    │   ├── auth.ts ⏳                 signToken, verifyToken, bearerClaims
+    │   ├── api.ts ⏳                  ApiError, ok, handler, body, requireStudent, requireKioskAdmin, rateLimit, clientIp
+    │   ├── sms.ts ⏳          formatTime, formatDateTime, buildSmsBody, dispatchSms
+    │   ├── session.ts ⏳              createWebSession, destroyWebSession, getWebAdmin, requireWebAdmin
+    │   ├── protocol.ts ⏳             QR/BLE/imza — mobildeki ile birebir aynı kurallar
+    │   └── scan.ts ⏳         REJECT_MESSAGES, ScanInput, ScanResult, processScan, manualEvent
     ├── components/
-    │   ├── AutoRefresh.tsx⏳                          sayfayı N sn'de bir yeniler
-    │   └── Badges.tsx⏳                               DirectionBadge, ReviewBadge, SourceBadge
+    │   ├── AutoRefresh.tsx ⏳          sayfayı N sn'de bir yeniler
+    │   └── Badges.tsx ⏳               DirectionBadge, ReviewBadge, SourceBadge
     └── app/
-        ├── layout.tsx✅, globals.css✅, favicon.ico✅
-        ├── page.tsx✅ (GEÇİCİ: bağlantı durumu — panel geliştirilince silinir; "/" (panel)/page.tsx olur)
-        ├── api/health/route.ts✅                      ortak veritabanı sağlık kontrolü (bu projeye özgü)
-        ├── login/  page.tsx⏳, LoginForm.tsx⏳, actions.ts⏳ (loginAction, logoutAction)
+        ├── layout.tsx ✅ · globals.css ✅ (panel tasarımı yapılırken referans tasarımına güncellenir) · favicon.ico ✅
+        ├── page.tsx ✅ GEÇİCİ — panel ana ekranı yazılınca SİLİNİR ("/" artık (panel)/page.tsx)
+        ├── api/health/route.ts ✅              ortak veritabanı sağlık kontrolü (kalır)
+        ├── login/
+        │   ├── page.tsx ⏳ · LoginForm.tsx ⏳
+        │   └── actions.ts ⏳           loginAction, logoutAction
         ├── (panel)/
-        │   ├── layout.tsx⏳ (requireWebAdmin + menü), NavLinks.tsx⏳, actions.ts⏳ (tüm Server Action'lar)
-        │   ├── page.tsx⏳ Canlı durum · hareketler/page.tsx⏳ · ogrenciler/page.tsx⏳ + StudentForms.tsx⏳
-        │   └── kiosklar/page.tsx⏳ · denemeler/page.tsx⏳ · sms/page.tsx⏳ · denetim/page.tsx⏳
+        │   ├── layout.tsx ⏳           requireWebAdmin + sol menü + kullanıcı kutusu + Çıkış yap
+        │   ├── NavLinks.tsx ⏳         menü bağlantıları (aktif bağlantı vurgulu, ikonlu)
+        │   ├── actions.ts ⏳ TÜM panel Server Action'ları (§4.2)
+        │   ├── page.tsx ⏳             Canlı durum
+        │   ├── ogrenciler/page.tsx ⏳ · ogrenciler/StudentForms.tsx ⏳
+        │   ├── kiosklar/page.tsx ⏳ · kiosklar/DeleteKioskButton.tsx ⏳ · kiosklar/AccountForms.tsx ⏳
+        │   ├── hareketler/page.tsx ⏳
+        │   ├── denemeler/page.tsx ⏳ · denetim/page.tsx ⏳
+        │   └── sms/page.tsx ⏳
         └── api/mobile/
-            ├── config/route.ts⏳
-            ├── student/{check-email, set-password, login, me}/route.ts⏳
-            ├── scan/route.ts⏳
-            ├── admin/login/route.ts⏳
-            └── kiosks/route.ts⏳, kiosks/[id]/start/route.ts⏳, kiosks/[id]/feed/route.ts⏳
+            ├── config/route.ts ⏳
+            ├── student/check-email/route.ts ⏳ · student/set-password/route.ts ⏳
+            ├── student/login/route.ts ⏳ · student/me/route.ts ⏳
+            ├── scan/route.ts ⏳
+            ├── admin/login/route.ts ⏳
+            └── kiosks/route.ts ⏳ · kiosks/[id]/start/route.ts ⏳ · kiosks/[id]/feed/route.ts ⏳
 ```
-Server Action adları (`src/app/(panel)/actions.ts`): `resetPasswordAction, resetDeviceAction, createStudentAction, manualEventAction, reviewEventAction, createKioskAction, toggleKioskAction`.
 
-### Veritabanına nasıl istek atılır (kalıp)
+**Referansta olup bu projeye EKLENMEYEN dosyalar:** `AdminPanel/docker-compose.yml` (yerel veritabanı), `POSTGRESQL_KURULUM.md`, `scripts/json-to-postgres.mjs`, `pnpm-lock.yaml`. `package.json`'a `db:up`, `db:down`, `db:reset`, `db:psql`, `db:import` eklenmez.
+
+### Katmanlar — veri nereden nereye akar
 
 ```
-Route / Server Component / Server Action  →  repo.ts fonksiyonu  →  q() / tx()  →  pg havuzu  →  SSL  →  AWS PostgreSQL
+Tarayıcı ──(form)──▶ Server Action (src/app/(panel)/actions.ts, login/actions.ts)   ─┐
+Tarayıcı ──(sayfa)─▶ Server Component (src/app/(panel)/**/page.tsx)                  ├─▶ src/lib/*.ts (iş kuralı) ─▶ src/lib/db/repo.ts ─▶ q()/tx() ─▶ pg havuzu ─SSL─▶ AWS PostgreSQL
+Telefon ──(JSON)───▶ Route Handler (src/app/api/mobile/**/route.ts)                  ─┘
 ```
+- Sayfa, Server Action ve route **ince** kalır: girdi doğrula → `lib` / `repo` fonksiyonu çağır → sonucu döndür.
+- **SQL yalnızca `src/lib/db/repo.ts` içinde** yazılır. Başka hiçbir dosya `pg`, `q()` veya `tx()` içe aktarmaz.
+- Okutma iş kuralları yalnızca `src/lib/scan.ts`'tedir; protokol hesapları yalnızca `src/lib/protocol.ts`'tedir.
+
 ```ts
-// src/app/api/mobile/kiosks/route.ts  (örnek)
+// Örnek: src/app/api/mobile/kiosks/route.ts (referanstaki dosyanın aynısı)
 import { handler, ok, requireKioskAdmin } from "@/lib/api";
 import { listKiosks } from "@/lib/db/repo";
 
 export const GET = handler(async (req: Request) => {
   await requireKioskAdmin(req);
-  const kiosks = await listKiosks();                 // SQL yalnızca repo.ts içinde
+  const kiosks = await listKiosks();
   return ok({ kiosks: kiosks.filter((k) => k.status === "ACTIVE").map((k) => ({ id: k.id, name: k.name })) });
 });
 ```
-Yeni bir sorgu gerekiyorsa `repo.ts`'e parametreli bir fonksiyon eklenir (`q<Tip>("SELECT … WHERE id = $1", [id])`); route ve sayfalar SQL yazmaz.
-Hazır örnek: `src/app/api/health/route.ts` → `dbHealth()`.
 
-## 3. Veri katmanı kuralları
+## 3. Veri katmanı
 
-- **Veritabanına yalnızca `src/lib/db/repo.ts` erişir.** Sayfalar, route'lar ve iş kuralları repo fonksiyonlarını çağırır; başka yerde SQL yazılmaz.
-- Repo fonksiyonları: `findStudentByEmail, getStudent, listStudents, createStudent, setStudentPassword, getActiveDevice, getActiveDeviceForStudent, setFirstPasswordAndBindDevice, resetStudentPassword, resetStudentDevice, findAdminByEmail, getAdmin, listKiosks, getKiosk, touchKiosk, createKiosk, setKioskStatus, insertScanAttempt, isReplay, lastEventForStudent, createEventWithSms, updateSms, getEvent, reviewEvent, listEvents, listScanAttempts, listKioskAttempts, listSms, dashboardStats, addAudit, listAudit`.
-- Her zaman **parametreli sorgu** (`$1, $2`); kullanıcı girdisini SQL metnine eklemeyin.
-- Birden çok tabloya yazan işlemler `tx()` içinde (transaction): `createStudent`, `setFirstPasswordAndBindDevice` (öğrenci satırı `FOR UPDATE` ile kilitlenir), `resetStudentDevice`, `createEventWithSms`.
-- Satırlar `camel()` ile camelCase'e, `Date` değerleri ISO metne çevrilir. `bigint` (time_slot) sayı olarak döner.
+### 3.1 Kurallar
+- Her zaman **parametreli sorgu** (`$1, $2`); kullanıcı girdisi SQL metnine eklenmez.
+- Birden çok tabloya yazan işlemler `tx()` içinde: `createStudent`, `setFirstPasswordAndBindDevice` (öğrenci satırı `FOR UPDATE` ile kilitlenir), `resetStudentDevice`, `createEventWithSms`.
+- Satırlar `camel()` ile camelCase'e, `Date` değerleri ISO metne çevrilir. `bigint` (`time_slot`) sayı döner.
 - `insertScanAttempt`: kabul edilmiş aynı (cihaz, kiosk, dilim) ikinci kez yazılırsa tekil indeks hatası (`23505`) yakalanır ve kayıt `REJECTED/REPLAY` olarak yazılır.
-- `dashboardStats`: "bugün" Türkiye saatine göre (`date_trunc('day', now() AT TIME ZONE 'Europe/Istanbul')`).
+- `dashboardStats`: "bugün" Türkiye saatine göre.
+- Kimlikler `newId("stu")` → `stu_` + 16 hex.
 
-### Tablolar (`db/schema.sql`)
+### 3.2 Repo fonksiyonları (`src/lib/db/repo.ts`)
+
+**Hazır olanlar** (yeniden yazmayın, yalnızca çağırın):
+`newId, findStudentByEmail, getStudent, listStudents (StudentRow), createStudent, setStudentPassword, getActiveDevice, getActiveDeviceForStudent, BindError, setFirstPasswordAndBindDevice, resetStudentPassword, resetStudentDevice, findAdminByEmail, getAdmin, listKiosks, getKiosk, touchKiosk, createKiosk, setKioskStatus, insertScanAttempt, isReplay, lastEventForStudent, createEventWithSms, updateSms, getEvent, reviewEvent, listEvents (EventRow), listScanAttempts (AttemptRow), listKioskAttempts, listSms, dashboardStats, addAudit, listAudit, dbHealth`.
+
+**Eklenecek 4 fonksiyon** (referanstaki `repo.ts` ile birebir aynı; ekleme yerleri referanstaki gibi):
+```ts
+// "yöneticiler" bölümüne, getAdmin'den sonra (kiosk tablet hesapları)
+/** Kiosk tableti hesapları (şifre özeti olmadan). */
+export function listKioskAccounts(): Promise<Pick<AdminUser, "id" | "fullName" | "email">[]> {
+  return q("SELECT id, full_name, email FROM admin_users WHERE role = 'KIOSK' ORDER BY full_name");
+}
+
+export async function createKioskAccount(fullName: string, email: string, passwordHash: string): Promise<AdminUser> {
+  const account: AdminUser = { id: newId("adm"), fullName: fullName.trim(), email: email.trim(), role: "KIOSK", passwordHash, twoFactorEnabled: false };
+  await tx((c) => insertRow(c, "admin_users", account));
+  return account;
+}
+
+/** Yalnızca KIOSK rolündeki hesabın şifresini değiştirir; hesap yoksa false döner. */
+export async function setKioskAccountPassword(id: string, passwordHash: string): Promise<boolean> {
+  const rows = await q("UPDATE admin_users SET password_hash = $2 WHERE id = $1 AND role = 'KIOSK' RETURNING id", [id, passwordHash]);
+  return rows.length > 0;
+}
+
+// "kiosklar" bölümüne, setKioskStatus'tan sonra (kiosk silme)
+/** Kiosku siler. Geçmiş hareket ve okutma kayıtları korunur (kiosk_id NULL olur, FK ON DELETE SET NULL). */
+export async function deleteKiosk(id: string): Promise<boolean> {
+  const rows = await q("DELETE FROM kiosks WHERE id = $1 RETURNING id", [id]);
+  return rows.length > 0;
+}
+```
+
+### 3.3 Tablolar (`db/schema.sql` — hazır, değiştirmeyin)
 
 | Tablo | Amaç / önemli kolonlar | Kısıtlar |
 | --- | --- | --- |
 | `students` | school_no, first_name, last_name, email, class_name, password_hash (null = henüz şifre yok), presence_status `IN/OUT` (varsayılan OUT), is_active | `lower(email)` tekil |
 | `guardians` | full_name, phone | |
-| `student_guardians` | student_id, guardian_id, relation, notify_entry, notify_exit | PK (student_id, guardian_id) |
-| `devices` | id = uygulamanın ürettiği deviceId, student_id, platform, device_secret, status `ACTIVE/REVOKED`, bound_at, revoked_at, revoked_by | öğrenci başına tek ACTIVE (kısmi tekil indeks) |
+| `student_guardians` | student_id, guardian_id, relation, notify_entry, notify_exit | PK (student_id, guardian_id); öğrenci silinince CASCADE |
+| `devices` | id = uygulamanın ürettiği deviceId, student_id, platform, device_secret, status `ACTIVE/REVOKED`, bound_at, revoked_at, revoked_by | öğrenci başına tek ACTIVE (kısmi tekil indeks); öğrenci silinince CASCADE |
 | `kiosks` | name, secret (32 bayt hex), status `ACTIVE/DISABLED`, last_seen_at | **yön kolonu yok** |
-| `scan_attempts` | device_id, student_id, kiosk_id, time_slot, ble_token, ble_rssi, ble_ok, integrity_ok, result `ACCEPTED/REJECTED`, reject_reason | (device_id, kiosk_id, time_slot) ACCEPTED için tekil |
-| `attendance_events` | student_id, direction `IN/OUT`, occurred_at, source `APP/MANUAL/OFFLINE`, kiosk_id, scan_attempt_id, review_status `UNREVIEWED/OK/SUSPICIOUS`, reviewed_by, note | |
-| `sms_messages` | event_id, guardian_id, phone, body, status `QUEUED/SENT/DELIVERED/FAILED/MOCK_SENT`, attempt_count, sent_at | (event_id, guardian_id) tekil |
-| `permissions` | izin kayıtları (ileride) | |
-| `admin_users` | full_name, email, role `ADMIN/KIOSK`, password_hash | `lower(email)` tekil |
-| `audit_logs` | admin_user_id, action, entity, entity_id, before_value/after_value (jsonb) | |
+| `scan_attempts` | device_id, student_id, kiosk_id, time_slot, ble_token, ble_rssi, ble_ok, integrity_ok, result `ACCEPTED/REJECTED`, reject_reason | (device_id, kiosk_id, time_slot) ACCEPTED için tekil; öğrenci/kiosk silinince SET NULL |
+| `attendance_events` | student_id, direction `IN/OUT`, occurred_at, source `APP/MANUAL/OFFLINE`, kiosk_id, scan_attempt_id, review_status `UNREVIEWED/OK/SUSPICIOUS`, reviewed_by, note | öğrenci silinince CASCADE; kiosk silinince SET NULL |
+| `sms_messages` | event_id, guardian_id, phone, body, status `QUEUED/SENT/DELIVERED/FAILED/MOCK_SENT`, provider_message_id, attempt_count, sent_at, delivered_at | (event_id, guardian_id) tekil; olay silinince CASCADE |
+| `permissions` | izin kayıtları (kullanılmıyor) | |
+| `admin_users` | full_name, email, role `ADMIN/KIOSK`, password_hash, two_factor_enabled | `lower(email)` tekil |
+| `audit_logs` | admin_user_id (FK değil), action, entity, entity_id, before_value/after_value (jsonb) | |
 
-Şema değişikliği: `db/schema.sql`'e `IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` ile ekleyin, `types.ts` ve `repo.ts`'i aynı PR'da güncelleyin. **Ekip kullanıcısının şema yetkisi yoktur**; PR birleşince proje sahibi uygular (kök AGENTS.md §7.1). Uygulanmadan önce yeni kolonu kullanan kod çalışmaz.
+**Ekip kullanıcısının şema yetkisi yoktur.** Bu projenin görevleri şema değişikliği gerektirmez.
 
 ## 4. Web paneli
 
-Oturum: `/login` (Server Action, bcrypt). Yalnızca `role = ADMIN` girer; KIOSK hesabı panele giremez. Oturum 12 saat, `fb_admin` httpOnly çerezi (`COOKIE_SECURE`).
-Her yönetici işlemi Server Action (`src/app/(panel)/actions.ts`) ile yapılır ve `addAudit` ile kaydedilir; sonra `revalidatePath`.
+Oturum: `/login` (Server Action, bcrypt). Yalnızca `role = ADMIN` girer; KIOSK hesabı panele giremez. Oturum 12 saat, `fb_admin` httpOnly çerezi.
+Her yönetici işlemi Server Action ile yapılır, **önce** `requireWebAdmin()` çağrılır, işlemden sonra `addAudit(...)` yazılır ve `revalidatePath(...)` çağrılır.
+Sayfalar sunucu bileşenidir, veriyi doğrudan repo'dan okur ve `export const dynamic = "force-dynamic";` içerir. `"use client"` yalnızca form durumu (`useActionState`), `usePathname`, `confirm()` ve otomatik yenileme için.
 
-| Sayfa | İçerik |
-| --- | --- |
-| `/` Canlı durum | Kartlar: okulda / dışarıda / bugünkü hareket (+incelenmemiş) / bugün reddedilen okutma; son 15 hareket; 10 sn'de bir otomatik yenilenir |
-| `/hareketler` | Tüm giriş-çıkışlar; filtre: tümü / incelenmedi / dikkat gerekenler (manuel + şüpheli) / şüpheli; "Uygun" / "Şüpheli" işaretleme |
-| `/ogrenciler` | Liste (sınıf + soyada göre, Türkçe sıralama), veli, durum, bağlı cihaz; **Şifreyi sıfırla**, **Cihazı sıfırla**, **Manuel giriş/çıkış**; yeni öğrenci formu (okul no, ad, soyad, sınıf, e-posta, veli adı, veli telefonu) |
-| `/kiosklar` | Kiosk listesi (çevrimiçi = son 60 sn'de sinyal), ekle (yalnızca ad), devre dışı bırak / etkinleştir |
-| `/denemeler` | Reddedilen okutmalar (neden, öğrenci, kiosk, BLE bilgisi) |
-| `/sms` | Veli SMS kayıtları ve durumları |
-| `/denetim` | Denetim kaydı (yönetici işlemleri) |
+### 4.1 Sayfalar
 
-Server Components veriyi doğrudan repo'dan okur (`export const dynamic = "force-dynamic"`). İstemci bileşenleri yalnızca form durumu ve otomatik yenileme içindir.
+| Yol | Dosya | Veri (repo) | İçerik |
+| --- | --- | --- | --- |
+| `/login` | `login/page.tsx` + `LoginForm.tsx` | `getWebAdmin` | Oturum varsa `/`'e yönlendir. Solda koyu tanıtım paneli (geniş ekranda): logo `İF`, "İzmir Fen", "Giriş-Çıkış Yönetim Paneli", büyük başlık "Kim okulda, kim çıktı — tek bakışta.". Sağda "Giriş-Çıkış Yönetim Paneli", "Yönetici hesabınızla giriş yapın.", form: E-posta, Şifre, "Giriş yap" / "Giriş yapılıyor…" |
+| `/` | `(panel)/page.tsx` | `dashboardStats()`, `listEvents({ limit: 15 })` | "Canlı durum" + `<AutoRefresh seconds={10} />`; 4 kart: **Okulda** (`inside`, "`total` öğrenciden", altında doluluk çubuğu), **Dışarıda** (`outside`, "şu an"), **Bugünkü hareket** (`todayEvents`, "`unreviewed` incelenmedi"), **Reddedilen okutma** (`rejectedToday`, "bugün"; >0 ise kırmızı kart). "Son hareketler" tablosu + "Tümünü gör →" `/hareketler` |
+| `/hareketler` | `(panel)/hareketler/page.tsx` | `listEvents({ review, onlyFlagged, limit: 300 })` | Filtre `?f=`: Tümü · İncelenmedi (`unreviewed`) · Dikkat gerekenler (`flagged`) · Şüpheli (`suspicious`). Tablo + "Uygun"/"Şüpheli" düğmeleri; şüpheli satır açık kırmızı; not varsa "Not: …" |
+| `/ogrenciler` | `(panel)/ogrenciler/page.tsx` + `StudentForms.tsx` | `listStudents()` | Tablo (Öğrenci · E-posta · Veli · Durum · Cihaz · İşlemler) + "Yeni öğrenci ekle" formu |
+| `/kiosklar` | `(panel)/kiosklar/page.tsx` + `DeleteKioskButton.tsx` + `AccountForms.tsx` | `listKiosks()`, `listKioskAccounts()` | Kiosk tablosu (Ad · Durum · Son sinyal · Devre dışı bırak/Etkinleştir + Sil), "Yeni kiosk" formu, "Kiosk tablet hesapları" tablosu (Ad · E-posta · şifre sıfırlama formu) + "Yeni kiosk hesabı" formu |
+| `/denemeler` | `(panel)/denemeler/page.tsx` | `listScanAttempts(true, 300)` | "Reddedilen okutmalar": Zaman · Öğrenci · Kiosk · Neden (kod rozeti + `REJECT_MESSAGES` açıklaması) · BLE ("doğru"/"hatalı" + " · -60 dBm", jeton yoksa "yok") |
+| `/sms` | `(panel)/sms/page.tsx` | `listSms(300)` | Açıklama: `mock` ise "Test modu: SMS'ler gerçekten gönderilmez, yalnızca burada ve sunucu konsolunda görünür." değilse "Sağlayıcı: …". Tablo: Zaman · Öğrenci · Telefon · Mesaj · Durum (FAILED kırmızı, QUEUED sarı, diğerleri yeşil) |
+| `/denetim` | `(panel)/denetim/page.tsx` | `listAudit(300)` | Zaman · Kim (`adminName ?? "Öğrenci uygulaması"`) · İşlem · Kayıt (`entity · entityId`) · Ayrıntı (`afterValue` JSON, tek satır kısaltılmış) |
 
-## 5. Mobil API uygulama kuralları
+Menü (`NavLinks.tsx`, bu sırayla): Canlı durum `/` · Giriş-çıkışlar `/hareketler` · Öğrenciler `/ogrenciler` · Kiosklar `/kiosklar` · Reddedilen okutmalar `/denemeler` · SMS kayıtları `/sms` · Denetim kaydı `/denetim`. Aktif bağlantı: `/` için tam eşleşme, diğerleri `startsWith`. İkon yolları referanstaki `NavLinks.tsx`'ten alınır.
 
-- Her route `handler(async (req) => …)` ile sarılır; gövde `await body(req, zodSchema)` ile doğrulanır; hata `throw new ApiError(status, "Türkçe mesaj", "KOD")`.
-- Kimlik: `requireStudent(req)` / `requireKioskAdmin(req)`. Öğrenci isteklerinde cihazın hâlâ aktif ve o öğrenciye bağlı olduğu da kontrol edilir (`DEVICE_REVOKED`).
-- Giriş uç noktalarında `rateLimit` (bellek içi): check-email 30/IP; set-password 8/e-posta + 30/IP; login 10/e-posta + 50/IP; admin login 10/e-posta + 30/IP (10 dk pencere).
-- Okutma iş kuralları yalnızca `src/lib/scan.ts`'te; route ince kalır. Her okutma denemesi sunucu loguna tek satır yazılır: `[scan] KABUL (IN) · öğrenci … · kiosk … · BLE … → EŞLEŞTİ`.
-- SMS gönderimi yanıtı bekletmez (`void dispatchSms(sms)`).
+Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/sms.ts`).
+
+### 4.2 Server Action'lar (`src/app/(panel)/actions.ts` — dosyanın başında `"use server";`)
+
+| Fonksiyon | Form alanları | Repo | Audit `action` (entity) | `revalidatePath` | Not |
+| --- | --- | --- | --- | --- | --- |
+| `resetPasswordAction(form)` | `studentId` | `resetStudentPassword` | `PASSWORD_RESET` (student) | `/ogrenciler` | Cihaz bağlı kalır |
+| `resetDeviceAction(form)` | `studentId` | `resetStudentDevice(id, admin.id)` | `DEVICE_RESET` (student) | `/ogrenciler` | Cihaz REVOKED + şifre silinir |
+| `createStudentAction(prev, form)` | `schoolNo, firstName, lastName, className, email, guardianName, guardianPhone` | `createStudent` | `STUDENT_CREATED` (student) `{ email }` | `/ogrenciler` | Dönüş `{ error?, ok? }`; zod hatası → "Lütfen zorunlu alanları doğru doldurun."; repo hatası mesajı aynen döner |
+| `manualEventAction(form)` | `studentId, direction, note` | `getStudent` + `manualEvent` (scan.ts) | `MANUAL_EVENT` (attendance_event) `{ direction, note }` | `/`, `/ogrenciler`, `/hareketler` | Not boşsa "Manuel kayıt"; yön mevcut durumla aynıysa sessizce çık |
+| `reviewEventAction(form)` | `eventId, status` (OK/SUSPICIOUS) | `reviewEvent(id, status, admin.id)` | `EVENT_REVIEWED` (attendance_event) `{ status }` | `/hareketler`, `/` | |
+| `createKioskAction(form)` | `name` | `createKiosk(name)` | `KIOSK_CREATED` (kiosk) `{ name }` | `/kiosklar` | Ad boşsa çık |
+| `toggleKioskAction(form)` | `kioskId, status` | `setKioskStatus` | `KIOSK_STATUS` (kiosk) `{ status }` | `/kiosklar` | |
+| `deleteKioskAction(form)` | `kioskId` | `getKiosk` + `deleteKiosk` | `KIOSK_DELETED` (kiosk) before `{ name, status }`, after `null` | `/kiosklar` | Kiosk yoksa çık |
+| `createKioskAccountAction(prev, form)` | `fullName, email, password` | `findAdminByEmail` + `createKioskAccount(fullName, email, bcrypt.hash(pw,10))` | `KIOSK_ACCOUNT_CREATED` (admin_user) `{ email }` | `/kiosklar` | zod: "Ad zorunlu.", "Geçerli bir e-posta girin.", "Şifre en az 10 karakter olmalı."; e-posta varsa "Bu e-posta zaten kayıtlı." |
+| `resetKioskAccountPasswordAction(prev, form)` | `accountId, password` | `setKioskAccountPassword` | `KIOSK_ACCOUNT_PASSWORD_RESET` (admin_user) | `/kiosklar` | <10 → "Şifre en az 10 karakter olmalı."; bulunamazsa "Kiosk hesabı bulunamadı." |
+
+`src/app/login/actions.ts`: `loginAction(prev, form)` (audit `WEB_LOGIN`, entity `admin_user`) ve `logoutAction()`.
+
+**Tüm audit işlem adları:** `WEB_LOGIN, KIOSK_LOGIN, KIOSK_START, PASSWORD_CREATED (adminUserId null), PASSWORD_RESET, DEVICE_RESET, STUDENT_CREATED, MANUAL_EVENT, EVENT_REVIEWED, KIOSK_CREATED, KIOSK_STATUS, KIOSK_DELETED, KIOSK_ACCOUNT_CREATED, KIOSK_ACCOUNT_PASSWORD_RESET`. Başka ad uydurulmaz.
+
+### 4.3 Tasarım
+
+`globals.css` referanstaki dosyayla aynı yapılır (renk paleti: yeşil `#17613c`, sıcak nötrler `#f4f3ee`/`#14211a`, giriş yeşil, çıkış mavi `#1e4fa8`, uyarı amber, hata kırmızı, manuel mor; bileşen sınıfları `@layer components` içinde). Rozetler (`Badges.tsx`): Giriş "→ Giriş" yeşil, Çıkış "← Çıkış" mavi; Uygun yeşil, Şüpheli kırmızı, İncelenmedi gri; kaynak MANUAL "Manuel" / OFFLINE "Çevrimdışı" mor, APP gösterilmez.
+
+## 5. Mobil API
+
+### 5.1 Uygulama kuralları
+- Her route `export const GET|POST = handler(async (req, ctx?) => { … })` biçimindedir; gövde `await body(req, zodSchema)`; hata `throw new ApiError(status, "Türkçe mesaj", "KOD")`.
+- Dinamik route parametresi Next.js 16'da Promise'tir: `ctx: { params: Promise<{ id: string }> }` → `const { id } = await ctx.params;`.
+- Kimlik: `requireStudent(req)` / `requireKioskAdmin(req)`. `GET /student/me` ayrıca cihazın hâlâ ACTIVE ve o öğrenciye bağlı olduğunu kontrol eder (`DEVICE_REVOKED`).
+- `rateLimit` (bellek içi, 10 dk pencere): check-email 30/IP · set-password 8/e-posta + 30/IP · login 10/e-posta + 50/IP · admin login 10/e-posta + 30/IP. Anahtarlar: `check:<ip>`, `setpw:<email>`, `setpw-ip:<ip>`, `login:<email>`, `login-ip:<ip>`, `admin:<email>`, `admin-ip:<ip>` (e-posta küçük harf).
+- Okutma kuralları yalnızca `scan.ts`'te; route ince kalır. Her okutma sunucu loguna tek satır: `[scan] KABUL (IN) · öğrenci … · kiosk … · BLE <jeton> RSSI -60 → EŞLEŞTİ`.
+- SMS gönderimi yanıtı bekletmez: `void dispatchSms(sms)`.
+
+### 5.2 Hata mesajları kataloğu (birebir bu metinler)
+
+| Yer | Durum · `code` | Mesaj |
+| --- | --- | --- |
+| `body()` | 400 `BAD_JSON` | İstek gövdesi JSON olmalı. |
+| `handler()` zod | 400 `VALIDATION` | Geçersiz istek. (+ `issues`) |
+| `handler()` diğer | 500 `ERROR` | hatanın mesajı veya "Beklenmeyen hata." |
+| `requireStudent` | 401 `UNAUTHORIZED` | Oturum süresi doldu. Tekrar giriş yapın. |
+| `requireKioskAdmin` | 401 `UNAUTHORIZED` | Yönetici oturumu gerekli. |
+| `rateLimit` | 429 `RATE_LIMIT` | Çok fazla deneme yapıldı. Birkaç dakika sonra tekrar deneyin. |
+| check-email / set-password | 404 `NOT_FOUND` | Bu e-posta adresi okul kayıtlarında bulunamadı. |
+| check-email | 409 `DEVICE_TAKEN` | Bu telefon başka bir öğrenci hesabına bağlı. Bir telefonda yalnızca bir öğrenci hesabı kullanılabilir. |
+| check-email | 403 `WRONG_DEVICE` | Hesabınız başka bir telefona bağlı. Telefon değiştirdiyseniz okul yönetiminden cihaz sıfırlaması isteyin. |
+| set-password | 400 `VALIDATION` (zod) | Şifre en az 8 karakter olmalı. (issues içinde) |
+| set-password | `BindError` kodu → 404/409/409/403 | `BindError` mesajı (repo.ts'te hazır) |
+| login (öğrenci) / admin login | 401 `BAD_CREDENTIALS` | E-posta veya şifre hatalı. |
+| login (öğrenci) | 403 `WRONG_DEVICE` | Hesabınız başka bir cihaza bağlı. Telefon değiştirdiyseniz okul yönetiminden cihaz sıfırlaması isteyin. |
+| me | 401 `DEVICE_REVOKED` | Bu cihazın bağlantısı kaldırılmış. Tekrar kayıt olmanız gerekiyor. |
+| me | 404 `NOT_FOUND` | Öğrenci bulunamadı. |
+| kiosks/[id]/start | 404 `NOT_FOUND` | Kiosk bulunamadı. |
+| scan | 422 `<RejectReason>` | `REJECT_MESSAGES[reason]` (aşağıda) |
+| panel girişi (Server Action) | — | E-posta veya şifre hatalı. · Bu hesap yalnızca kiosk (QR) ekranı içindir; panele giriş yetkisi yok. |
+
+`REJECT_MESSAGES` (`scan.ts`; **WRONG_STATE yok**, kök AGENTS.md §0.2):
+`INVALID_QR` Bu QR kod okul kioskuna ait değil. · `EXPIRED_QR` QR kodun süresi doldu. Ekrandaki güncel kodu okutun. · `UNKNOWN_KIOSK` Kiosk tanınmadı veya devre dışı. · `BAD_SIGNATURE` İstek doğrulanamadı. Uygulamayı güncelleyin veya tekrar giriş yapın. · `DEVICE_NOT_BOUND` Bu cihaz hesabınıza bağlı değil. · `BLE_MISSING` Kiosk Bluetooth sinyali algılanamadı. Bluetooth'u açıp kioska yaklaşın. · `BLE_MISMATCH` Kiosk Bluetooth sinyali doğrulanamadı. Kioska yaklaşıp tekrar deneyin. · `REPLAY` Bu kod bu cihazdan zaten okutuldu. Bir sonraki kodu bekleyin. · `DIRECTION_REQUIRED` İlk okutmanız: giriş mi çıkış mı yaptığınızı seçin.
+Öğrenci kaydı aktif değilse `DEVICE_NOT_BOUND` koduyla "Öğrenci kaydı aktif değil." döner.
+
+### 5.3 `processScan` ayrıntıları (referansla aynı — atlanmaması gerekenler)
+- BLE: jeton geldiyse `bleOk` = QR diliminin, bir önceki veya bir sonraki dilimin jetonuyla `safeEqual`. `bleOk` false ise **yalnızca** `config.bleRequired` iken `BLE_MISMATCH` reddi; değilse okutma kabul edilir ve `bleVerified: false` döner.
+- Çift okutma: son olaydan `duplicateWindowSeconds` geçmediyse `ACCEPTED` deneme yazılır, son olay `duplicate: true` ile döner (yön değişmez, SMS yok). Bu kontrol yön kontrolünden **önce** yapılır.
+- `DIRECTION_REQUIRED` hiçbir tabloya yazılmaz.
+- Kabulde: `insertScanAttempt(ACCEPTED)` → dönen kayıt `REJECTED` ise (eş zamanlı tekrar) `REPLAY` döndür → `touchKiosk` → `occurredAt = new Date().toISOString()` → `createEventWithSms(...)` → `void dispatchSms(sms)`.
 
 ## 6. Ortam değişkenleri (`.env.example` → `.env.local`)
 
@@ -163,15 +272,17 @@ Server Components veriyi doğrudan repo'dan okur (`export const dynamic = "force
 | `DATABASE_URL` | Ortak veritabanı: `postgres://izmirfen_app:<şifre>@<sunucu>:5433/izmirfen` — **proje sahibinden özel kanaldan alınır** |
 | `DATABASE_SSL` | `true` (sunucu SSL'siz bağlantıyı reddeder) |
 | `DATABASE_SSL_REJECT_UNAUTHORIZED` | `false` (sertifika kendinden imzalı; bağlantı yine şifreli) |
-| `DATABASE_POOL_MAX` | `3` — ortak veritabanında geliştirici başına küçük havuz |
+| `DATABASE_POOL_MAX` | `3` |
 | `SEED_SAMPLE_DATA` | Boş veritabanına örnek veri (geliştirmede açık, canlıda kapalı) |
-| `DATABASE_OWNER_URL` | **Yalnızca proje sahibi** — şema uygulamak için; ekipte boş kalır |
-| `AUTH_SECRET` | JWT anahtarı. **Şu an kullanılmıyor**; `auth.ts` geliştirilince gerekir. Herkes kendisi üretir (`openssl rand -hex 32`), paylaşılmaz; canlıda zorunlu (kök AGENTS.md §5.1) |
-| `BLE_REQUIRED` | `true`: BLE jetonu zorunlu |
+| `DATABASE_OWNER_URL` | **Yalnızca proje sahibi** — ekipte boş |
+| `AUTH_SECRET` | JWT anahtarı. Kimlik doğrulama (giriş kartları) yazıldığından itibaren gerekir. Herkes kendisi üretir (`openssl rand -hex 32`), paylaşılmaz; canlıda zorunlu (kök AGENTS.md §5.1) |
+| `BLE_REQUIRED` | `true`: BLE jetonu zorunlu (varsayılan `false`) |
 | `DUPLICATE_WINDOW_SECONDS` | Çift okutma penceresi (varsayılan 120) |
 | `SMS_PROVIDER` | `mock` |
-| `SCHOOL_SHORT_NAME` | SMS imzası |
+| `SCHOOL_SHORT_NAME` | SMS imzası (`"Izmir Fen"`) |
 | `COOKIE_SECURE` | Yerelde (http) `false`, canlıda `true` |
+
+`.env.local` değiştirildiğinde `npm run dev` yeniden başlatılmalıdır.
 
 ## 7. Komutlar
 
@@ -179,22 +290,50 @@ Server Components veriyi doğrudan repo'dan okur (`export const dynamic = "force
 npm install
 npm run db:check      # ortak veritabanına bağlantı: SSL, kullanıcı, yetkiler, tablolar, satır sayıları
 npm run dev           # http://localhost:3000 (boş DB'ye ilk bağlanan geliştirici örnek veriyi ekler)
-npm run typecheck     # tsc --noEmit
-npm run lint          # eslint
+npm run typecheck     # tsc --noEmit  — her işten sonra
+npm run lint          # eslint        — her işten sonra (kök AGENTS.md §9: npx eslint src scripts)
+npm run test:e2e      # uçtan uca test yazıldıktan sonra; npm run dev açıkken ayrı terminalde
 npm run admin:create -- --email ad@okul.test --name "Ad Soyad" --role ADMIN   # şifre gizli sorulur
 ```
-Bu projede **`db:reset` yoktur** ve olmayacaktır (ortak veritabanı). Uçtan uca test (geliştirildiğinde) kendi verisini oluşturur ve temizler.
+Bu projede **`db:reset` yoktur** ve olmayacaktır (ortak veritabanı).
 
-**Sorun giderme (`npm run db:check`)**: `ECONNREFUSED/timeout` → sunucu adresi/port 5433 veya güvenlik duvarı; `no pg_hba.conf entry … no encryption` → `DATABASE_SSL=true` değil; `password authentication failed` → şifre; `permission denied for schema public` → şema değiştirmeye çalışıyorsunuz (yalnızca proje sahibi).
+**API'yi elle denemek (curl):**
+```bash
+curl -s localhost:3000/api/mobile/config
+curl -s -X POST localhost:3000/api/mobile/student/check-email -H 'Content-Type: application/json' \
+  -d '{"email":"test+adiniz-1@izmirfen.test","deviceId":"test-cihaz-adiniz-1"}'
+```
+Şifre içeren istekleri curl ile **komut satırına yazmayın** (kabuk geçmişine girer); bunları `npm run test:e2e` veya mobil uygulamayla deneyin.
 
-## 8. Canlı ortam
+**Örnek hesaplar** (`seed.ts`, veritabanı boşken eklenir): panel `admin@fenbahceleri.test` (ADMIN), tablet `kapi@fenbahceleri.test` (KIOSK), 5 öğrenci (`ali.yilmaz@fenbahceleri.test` …), kiosk `kiosk_ana` "Ana Kapı". Şifreler `src/lib/db/seed.ts` içindedir. Bu hesaplar **ortaktır**: şifrelerini/cihazlarını değiştirmeyin; testte kendi test kayıtlarınızı oluşturun (kök AGENTS.md §7.1).
 
-Ortak geliştirme veritabanı canlı değildir. Canlıya alma (ayrı veritabanı + panel + HTTPS, Docker) proje sonunda yapılır; yöntem ve maliyet planı görev listesindedir. Canlı veritabanına ekip doğrudan bağlanmaz.
+## 8. Uçtan uca test (`scripts/e2e-test.mjs`)
+
+Referanstaki testin **aynı kontrollerini** yapar; farkı ortak veritabanında **kendi verisini oluşturup silmesidir**:
+- Başta `pg` ile (aynı `DATABASE_URL`, `DATABASE_SSL*` ayarları): benzersiz son ekli (`randomBytes(4).toString("hex")`) test öğrencisi `test+e2e-<ek>@izmirfen.test` (+ velisi), ikinci test öğrencisi (DEVICE_TAKEN kontrolü için), test kiosku `TEST e2e-<ek>`, `role=KIOSK` test hesabı (rastgele şifre, `bcryptjs` ile özet).
+- Kiosk listesinden **kendi test kioskunu** id ile seçer (ilk kioskun değil).
+- Sonda `try/finally` ile **yalnızca kendi oluşturduklarını** siler, şu sırayla: `scan_attempts WHERE device_id = ANY($1)` → `students WHERE id = ANY($1)` (devices, attendance_events, sms_messages, student_guardians CASCADE) → `guardians WHERE id = ANY($1)` → `kiosks WHERE id = $1` → `admin_users WHERE id = $1`. `audit_logs` silinmez.
+- `package.json`: `"test:e2e": "node --env-file=.env.local scripts/e2e-test.mjs"`; adres `API_URL` (varsayılan `http://localhost:3000`).
 
 ## 9. Yapılmaması gerekenler
 
-- `repo.ts` dışında SQL; ORM eklemek; şemayı elle değiştirmeye çalışmak (yetki de yok) veya `schema.sql`'e yazmamak.
-- Ortak veritabanında `WHERE`'siz `DELETE/UPDATE`, başkasının test verisini silmek, veritabanı adresini/şifresini koda veya loga yazmak.
+- `repo.ts` dışında SQL; ORM eklemek; şemayı değiştirmeye çalışmak.
+- Ortak veritabanında `WHERE`'siz `DELETE/UPDATE`, başkasının (ve örnek verinin) kayıtlarını silmek/değiştirmek, veritabanı adresini/şifresini koda veya loga yazmak.
 - İstemciden gelen `direction`'a, öğrenci kimliğine veya zaman damgasına güvenmek (öğrenci kimliği JWT'den, yön sunucudan, tazelik sunucu saatinden).
-- Hata yanıtında stack/SQL ayrıntısı döndürmek; şifre, anahtar veya JWT loglamak.
+- Hata yanıtında stack/SQL ayrıntısı döndürmek; şifre, anahtar, `deviceSecret`, kiosk `secret` veya JWT loglamak.
 - `protocol.ts`'i mobil tarafı güncellemeden değiştirmek.
+- Referanstaki yerel veritabanı dosyalarını (§2 sonu) veya referansın `AGENTS.md`/belgelerini bu projeye kopyalamak.
+- Hazır dosyaları (`src/lib/db/*`, `db/schema.sql`, `scripts/db-*.mjs`, `scripts/create-admin.mjs`, `api/health`) referanstakiyle değiştirmek (repo.ts'e yalnızca §3.2'deki 4 fonksiyon eklenir).
+
+## 10. Sık karşılaşılan hatalar
+
+| Belirti | Neden / çözüm |
+| --- | --- |
+| `DATABASE_URL tanımlı değil` | `.env.local` yok veya `npm run dev` `.env.local`'i görmüyor: `cp .env.example .env.local`, adresi yazın, sunucuyu yeniden başlatın |
+| `db:check` → `timeout` / `ECONNREFUSED` | Ağınız 5433'ü engelliyor olabilir (okul/şirket ağı); başka ağdan deneyin, proje sahibine haber verin |
+| Tüm token'lar 401 | `AUTH_SECRET` değişti veya telefon başka geliştiricinin sunucusuna bağlandı — yeniden giriş yapın |
+| Panelde girişten sonra tekrar `/login` | Yerelde `COOKIE_SECURE=false` olmalı; `fb_admin` çerezi yazılmıyor |
+| `params` hatası (`params.id` undefined) | Next.js 16'da `params` Promise: `const { id } = await ctx.params` |
+| `Type '"WRONG_STATE"' …` tip hatası | `REJECT_MESSAGES`'a `WRONG_STATE` eklenmiş; silin (kök AGENTS.md §0.2) |
+| `permission denied for table …` | Ekip kullanıcısının yapamadığı bir şey (şema değişikliği) deneniyor — durun, proje sahibine sorun |
+| `too many connections` | Açık kalmış `npm run dev` süreçlerini kapatın |

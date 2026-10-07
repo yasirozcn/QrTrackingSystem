@@ -4,7 +4,7 @@ Bu dosya, bu depoda çalışan yapay zekâ kodlama ajanları (Claude Code, Codex
 Projenin **ne yaptığını, iki uygulamanın birbiriyle nasıl konuştuğunu ve değişmemesi gereken kuralları** anlatır.
 Alt projelerin kendi ayrıntıları: [`AdminPanel/AGENTS.md`](AdminPanel/AGENTS.md), [`QrScannerApp/AGENTS.md`](QrScannerApp/AGENTS.md).
 
-> Arayüz tasarımı serbesttir. **Bu dosyadaki protokol, API sözleşmesi, veri modeli ve iş kuralları birebir uygulanmalıdır** —
+> Referans kaynak kodu: https://github.com/yasirozcn/FenBahceleri (sürüm `5387bef`; yalnızca okunur, indirilmez — §0.1; prompt referanstan farklı isterse §0.3). **Bu dosyadaki protokol, API sözleşmesi, veri modeli ve iş kuralları birebir uygulanmalıdır** —
 > mobil uygulama ile sunucu ancak böyle birbirini anlar.
 
 ---
@@ -12,16 +12,78 @@ Alt projelerin kendi ayrıntıları: [`AdminPanel/AGENTS.md`](AdminPanel/AGENTS.
 ## 0. Hedef: referans projeyle birebir aynı yapı
 
 Bu depo, okulun mevcut **referans projesinin** (Fen Bahçeleri giriş-çıkış sistemi) aynısını yeniden geliştirmek içindir.
-Geliştirme bittiğinde aşağıdakiler referansla **birebir aynı** olmalıdır; yalnızca **arayüzün görünümü** (renk, yerleşim, metin dili hariç bileşen tasarımı) serbesttir:
+Geliştirme bittiğinde aşağıdakiler referansla **birebir aynı** olmalıdır:
 
 - **Dosya ve klasör yapısı**: `AdminPanel/AGENTS.md` §2 ve `QrScannerApp/AGENTS.md` §2'deki **hedef ağaç** — aynı yollar, aynı dosya adları.
 - **Dışa aktarılan fonksiyon/tip adları** (`repo.ts`, `auth.ts`, `api.ts`, `scan.ts`, `protocol.ts`, mobil `lib/*`), **route yolları**, **ekran yolları** (Expo Router).
-- **Protokol, API sözleşmesi, hata kodları, iş kuralları** (§4–§6), **tablo/kolon adları** (`db/schema.sql`), **ortam değişkeni adları**.
-- **Davranış**: aynı istek → aynı yanıt ve aynı veritabanı değişikliği.
+- **Protokol, API sözleşmesi, hata kodları, hata mesajları, iş kuralları** (§4–§6), **tablo/kolon adları** (`db/schema.sql`), **ortam değişkeni adları**.
+- **Davranış**: aynı istek → aynı yanıt (aynı Türkçe mesaj dahil) ve aynı veritabanı değişikliği.
+- **Arayüz**: ekranlar, alanlar, düğme metinleri ve renk paleti referanstaki gibidir. Yalnızca okul adı/logo harfleri değişir (§0.2). Görünümde küçük farklar hata sayılmaz, ama **akış ve metinler** aynı olmalıdır.
 
-Hedef ağaçta olmayan dosya, klasör veya fonksiyon adı **uydurulmaz**. Gerçekten gerekiyorsa önce proje sahibine sorulur ve AGENTS.md güncellenir.
-Referanstan bilinçli farklar yalnızca şunlardır: ortak geliştirme veritabanı (`infra/dev-db/`, `scripts/db-check.mjs`, `/api/health`, `dbHealth()`), `AUTH_SECRET`'ın üretimde zorunlu olması (§5.1), gerçek SMS sağlayıcısı entegrasyonu (referansta yalnızca `mock`; görev listesinin son adımı) ve okul adları/kimlikleri.
-Geliştirme sırası ve her adımın ayrıntısı: proje sahibinin Jira görevleri (G-01 → G-38).
+Hedef ağaçta olmayan dosya, klasör veya fonksiyon adı **uydurulmaz** — istisna: §0.3'e göre prompt/görev yeni bir özellik istiyorsa, yeni dosyalar mevcut yapıya uygun yere ve aynı adlandırma kurallarıyla eklenir.
+Geliştirme sırası ve her adımın ayrıntısı: proje sahibinin Jira görevleri (Web: `WEB-1 … WEB-13`, Uygulama: `APP-1 … APP-7`).
+
+### 0.1 Referans kaynak kodu — yalnızca GitHub'dan okunur, bilgisayara İNDİRİLMEZ
+
+Referans projenin kaynak kodu: **https://github.com/yasirozcn/FenBahceleri** — sabitlenmiş sürüm (commit) **`5387bef`**.
+Bu depo yalnızca **Claude'un (yapay zekâ ajanının) karşılaştırma ve kontrol için okuyabilmesi** amacıyla verilmiştir.
+
+**Yasak:** referans depoyu `git clone`, `git fetch`, `gh repo clone`, `curl -o`/`wget`, ZIP indirme veya başka herhangi bir yolla **bilgisayara çekmek**, dosyalarını bu depoya ya da diske kaydetmek/kopyalamak. Ekip üyelerinden de bunu istemeyin ve önermeyin.
+
+**Nasıl okunur:** dosyayı web üzerinden okuyun (Claude Code'da `WebFetch`), diske yazmadan:
+- Ham dosya: `https://raw.githubusercontent.com/yasirozcn/FenBahceleri/5387bef/<aynı yol>`
+  ör. bu projedeki `AdminPanel/src/lib/scan.ts`'in karşılığı → `https://raw.githubusercontent.com/yasirozcn/FenBahceleri/5387bef/AdminPanel/src/lib/scan.ts`
+  (köşeli/parantezli yollarda `(panel)` → `%28panel%29`, `[id]` → `%5Bid%5D` yazın.)
+- Klasör listesi gerekirse: `https://github.com/yasirozcn/FenBahceleri/tree/5387bef/<klasör>`
+- Her zaman `5387bef` sürümünü okuyun (`main` değil); sonraki değişiklikler bu projenin kapsamında değildir.
+
+**Referansı kullanma kuralları**
+1. Bir dosyayı oluşturmadan/değiştirmeden önce referanstaki **aynı yoldaki dosyayı** ve onun içe aktardığı (`import`) dosyaları okuyun.
+2. Referanstaki yapıyı, adları, mesajları ve davranışı uygulayın; **yalnızca §0.2 tablosundaki uyarlamaları** yapın — görev/prompt aksini istemedikçe (§0.3).
+3. Referans depodaki `AGENTS.md`, `CLAUDE.md`, `README.md`, `POSTGRESQL_KURULUM.md`, `CANLIYA_ALMA.md` **bu proje için geçerli değildir** (yerel Docker veritabanı, `db:reset` gibi burada yasak olan şeyler anlatır). Kurallar için **yalnızca bu depodaki** AGENTS.md / CLAUDE.md dosyaları geçerlidir; referanstan yalnızca **kaynak kod** örnek alınır.
+4. Referans kod okunur ve anlaşılır; bu depodaki dosya ekip tarafından (Claude ile) yazılır. Karşılaştırma, okunan referans içerikle bu depodaki dosya arasında yapılır (diske referans dosyası yazılmaz).
+5. Bu depoda **zaten hazır** olan dosyaları (`src/lib/db/*`, `db/schema.sql`, `scripts/db-*.mjs`, `scripts/create-admin.mjs`, yapılandırma dosyaları, `infra/`) referanstakiyle **değiştirmeyin**; bunlar ortak veritabanı için bilerek farklıdır. Yalnızca görevin söylediği eklemeyi yapın.
+6. Referans ile bu dosya (AGENTS.md) çelişirse **bu dosya geçerlidir**; çelişkiyi kullanıcıya bildirin.
+
+### 0.3 Referansta olmayan veya referanstan farklı istenen özellikler — prompt esastır
+
+Referans, **varsayılan** davranıştır; bağlayıcı olan, kullanıcının verdiği görev/prompt'tur:
+- Prompt/görev **referans depoda olmayan bir özellik** isterse veya **var olan bir özelliğin değiştirilmesini** isterse, **prompt baz alınır**. Referanstaki eski davranış gerekçe gösterilerek prompt'a direnilmez; referans yalnızca kod stili ve yapı için örnek olarak kullanılır.
+- Yeni dosya, ekran, sayfa, route, repo fonksiyonu gerekiyorsa mevcut katman yapısına (§3) ve adlandırma kurallarına (§8) uygun eklenir; ilgili AGENTS.md hedef ağacı aynı işte güncellenir.
+- Prompt ile referans çelişiyorsa ve prompt açıkça değişiklik istiyorsa prompt uygulanır; belirsizse (referansla aynı mı kalsın, değişsin mi?) kullanıcıya sorulur.
+
+**Prompt istese bile değişmeyen ana yapılar** (bunları etkileyen bir istek gelirse uygulamadan önce durun, etkisini açıklayın ve proje sahibinin onayını isteyin):
+1. **Bluetooth yapısı:** BLE jetonu üretimi ve doğrulaması, `BLE_SERVICE_UUID`, service data / `"FB"` yerel ad biçimi, `modules/kiosk-beacon` yayın modeli, `lib/ble.ts` tarama modeli.
+2. **Panel ↔ uygulama bağlantısı:** mobil uygulamanın yalnızca `/api/mobile/*` HTTP JSON API'si üzerinden konuşması, mevcut uç noktaların yolları/istek/yanıt biçimleri ve hata biçimi `{ error, code }` (§5), JWT rolleri ve süreleri, mobilin veritabanına asla bağlanmaması.
+3. **Protokol:** QR biçimi `FB2`, dilim süresi ve toleranslar, HMAC kuralları, istek imzası (§4) — sunucu ve mobil `protocol.ts` birlikte.
+4. **Güvenlik çekirdeği:** cihaz bağlama (bir öğrenci = bir cihaz), okutma doğrulama sırası (§6), kiosk anahtarının cihazda QR üretmesi, gizli bilgilerin saklanma yeri.
+5. **Veri erişim katmanı ve şema:** SQL yalnızca `repo.ts`'te; `db/schema.sql` yalnızca proje sahibi tarafından değişir.
+
+Bu yapılara **dokunmadan** eklenen özellikler (yeni panel sayfası, yeni ekran, mevcut uç noktaya geriye uyumlu yeni alan, yeni rapor, metin/tasarım değişikliği vb.) serbesttir ve prompt'a göre yapılır. Yeni bir mobil uç noktası gerekiyorsa `/api/mobile/` altında aynı kalıpla (handler + zod + ApiError) eklenir ve §5 tablosu güncellenir.
+
+### 0.2 Referanstan bilinçli farklar (uyarlama tablosu)
+
+| Konu | Referans (Fen Bahçeleri) | Bu proje (İzmir Fen) |
+| --- | --- | --- |
+| Görünen okul adı (panel girişi, panel menüsü, uygulama açılışı, kiosk ekranı, sayfa başlığı) | `Fen Bahçeleri` | `İzmir Fen` |
+| Logo kutusundaki harfler (panel + uygulama) | `FB` | `İF` |
+| `SCHOOL_SHORT_NAME` varsayılanı (SMS imzası, Türkçe karaktersiz) | `"Fen Bahceleri"` | `"Izmir Fen"` |
+| Panel `<title>` | `Fen Bahçeleri · Giriş-Çıkış Paneli` | `İzmir Fen · Giriş-Çıkış Paneli` |
+| Veritabanı | Yerel Docker (`AdminPanel/docker-compose.yml`, `db:up`, `db:reset`, `db:psql`, `db:import`, `POSTGRESQL_KURULUM.md`, `json-to-postgres.mjs`) | **AWS ortak geliştirme veritabanı** (`infra/dev-db/`, `npm run db:check`). Referanstaki bu yerel veritabanı dosyaları/komutları **bu projeye eklenmez** |
+| Bağlantı havuzu | 10 | 3 (`pg.ts`'te hazır) |
+| Şemayı uygulayan | `DATABASE_URL` | yalnızca proje sahibi, `DATABASE_OWNER_URL` (hazır) |
+| Örnek uç nokta | yok | `/api/health` + `dbHealth()` (hazır, kalır) |
+| `AUTH_SECRET` üretimde yoksa | `config.ts` uyarı yazar, devam eder | `auth.ts` **hata fırlatır** (§5.1) |
+| `RejectReason` tipi | `WRONG_STATE` içerir | `WRONG_STATE` **yok** → `REJECT_MESSAGES`'a da eklenmez (yoksa tip hatası) |
+| Uçtan uca test (`scripts/e2e-test.mjs`) | Örnek öğrenci `ali.yilmaz@…` ve kiosk şifresini kullanır | **Kendi verisini oluşturur ve siler** (ortak veritabanı, §7.1) |
+| `Dockerfile` | `pnpm` + `pnpm-lock.yaml` | `npm ci` + `package-lock.json` |
+| Android APK adı (`tools/android-apk.sh`) | `fen-bahceleri-kiosk.apk` | `izmir-fen-kiosk.apk` |
+| `app.json` adları / paket kimliği | `com.fenbahceleri.giris` | `com.izmirfen.giris` (hazır) |
+| `eas.json` / EAS `projectId`, `owner` | referansın hesabı | proje sahibinin kendi EAS hesabı (referanstaki kimlikler **kopyalanmaz**) |
+| Canlı ortam adları (`deploy/`) | `fenbahceleri`, `fb_app` | `izmirfen`, `izmirfen_app` |
+| Gerçek SMS sağlayıcısı | yok (yalnızca `mock`) | isteğe bağlı son görev |
+
+**Değişmeyenler (protokol — dokunmayın):** `FB2`, `BLE_SERVICE_UUID`, BLE yerel ad öneki `"FB"`, panel çerezi `fb_admin`, mobil güvenli depo anahtarları `fb.deviceId / fb.deviceSecret / fb.studentToken / fb.adminToken / fb.boundEmail`, kimlik önekleri (`stu_`, `kiosk_` …), örnek veri (`seed.ts`, `@fenbahceleri.test` hesapları — hazır, değiştirmeyin).
 
 ## 1. Ürün
 
@@ -86,7 +148,8 @@ FenBahceleri_IzmırFen/
 │       └── app/
 │           ├── layout.tsx ✅ · globals.css ✅ · page.tsx ✅ (GEÇİCİ) · api/health/ ✅
 │           ├── login/ ⏳                   page · LoginForm · actions
-│           ├── (panel)/ ⏳                 layout · NavLinks · actions · page (Canlı durum) · hareketler · ogrenciler · kiosklar · denemeler · sms · denetim
+│           ├── (panel)/ ⏳                 layout · NavLinks · actions · page (Canlı durum) · hareketler · ogrenciler (+StudentForms)
+│           │                              kiosklar (+AccountForms, DeleteKioskButton) · denemeler · sms · denetim
 │           └── api/mobile/ ⏳              config · student/{check-email,set-password,login,me} · scan · admin/login · kiosks[/:id/{start,feed}]
 │
 └── QrScannerApp/                          Expo SDK 57 — öğrenci + kiosk uygulaması
@@ -97,7 +160,7 @@ FenBahceleri_IzmırFen/
     └── src/
         ├── app/                           _layout ✅ · index ✅ (GEÇİCİ) · student-login ⏳ · student-home ⏳ · scan ⏳
         │                                  admin-login ⏳ · kiosk-select ⏳ · kiosk/[id] ⏳ · ble-debug ⏳
-        ├── components/ ⏳                  ui.tsx · BluetoothGate.tsx
+        ├── components/ ⏳                  ui.tsx · icons.tsx · BluetoothGate.tsx
         └── lib/                           config ✅ · api ⏳ · session ⏳ · device ⏳ · protocol ⏳ · ble ⏳
 ```
 
@@ -132,6 +195,21 @@ bleToken = hex( HMAC(kioskSecret, "BLE|<kioskId>|<slot>") ilk 8 bayt )
 signature = hex( HMAC(deviceSecret, "<qr>|<bleToken veya boş>|<timestamp>") )   // 64 hex
 ```
 `deviceSecret`: telefonun ilk girişte ürettiği 32 baytlık rastgele anahtar (64 hex), güvenli depoda (Keychain/Keystore) saklanır ve şifre oluşturulurken sunucuya bir kez gönderilir.
+
+**Test vektörleri** — sunucu (`AdminPanel/src/lib/protocol.ts`) ve mobil (`QrScannerApp/src/lib/protocol.ts`) **aynı** sonucu vermelidir:
+```
+kioskSecret  = 00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff
+deviceSecret = a1b2c3d4e5f60718293a4b5c6d7e8f90a1b2c3d4e5f60718293a4b5c6d7e8f90
+kioskId      = kiosk_ana
+
+buildQrPayload(kioskSecret, kioskId, 358175649) = FB2.kiosk_ana.358175649.ivyQsF9B06xMvaPuD6iMnw
+buildQrPayload(kioskSecret, kioskId, 358175650) = FB2.kiosk_ana.358175650.ICWLy0KU5DhU-qSqdH3iWA
+bleToken(kioskSecret, kioskId, 358175649)       = 548e111d76ce75ae
+bleToken(kioskSecret, kioskId, 358175650)       = 9fae1e1ae653d81d
+requestSignature(deviceSecret, <ilk QR>, "548e111d76ce75ae", 1791125763537) = b1d5809f5f7aa836a6d9eaa99ea69471dde822176d6539d82f1b286b7484c53b
+requestSignature(deviceSecret, <ilk QR>, null, 1791125763537)               = a05cdbeae0232aa7b98e6f0b3c105c1436077b56f903dcf2d5718f12000b3d63
+currentSlot(1791125763537) = slotAt(1791125763537, 5) = 358225152
+```
 
 ## 5. Mobil API sözleşmesi
 
@@ -196,7 +274,12 @@ Doğrulama hatası: `400 { error, code: "VALIDATION", issues }`. Sık deneme: `4
 
 **SMS**: 1. aşamada gerçek gönderim yok (`SMS_PROVIDER=mock`): mesaj kaydedilir, durumu `MOCK_SENT` olur. Metin: `Sayin Veli, <Ad Soyad> <HH:mm>'de okula giris yapti. - <Okul>`.
 
-**Panelden manuel giriş/çıkış**: telefonu olmayan öğrenci için; `source = MANUAL`, aynı SMS kuralları.
+**Panelden manuel giriş/çıkış**: telefonu olmayan öğrenci için; `source = MANUAL`, aynı SMS kuralları. Yön öğrencinin mevcut durumuyla aynıysa (okuldayken "giriş") hiçbir şey yapılmaz.
+
+**Kiosklar ve kiosk tablet hesapları** (panel → Kiosklar)
+- Kiosk eklenir (yalnızca ad; gizli anahtarı sunucu üretir), devre dışı bırakılır/etkinleştirilir veya **kalıcı silinir**. Silinen kioskun geçmiş hareket ve okutma kayıtları korunur (`kiosk_id` NULL olur, FK `ON DELETE SET NULL`).
+- **Kiosk tablet hesabı** = `admin_users` tablosunda `role = 'KIOSK'` olan kullanıcı. Tablette "Yönetici girişi" ile kullanılır, **web paneline giremez**. Panelden yeni hesap açılır (ad, e-posta, şifre **≥ 10** karakter) ve şifresi sıfırlanır (eski şifre gösterilmez; yalnızca yenisi verilir). Tablette açık oturum (180 günlük token) şifre değişince düşmez; bir sonraki girişte yeni şifre gerekir.
+- `ADMIN` rolündeki hesaplar panelden oluşturulmaz; yalnızca `npm run admin:create` ile.
 
 **Saat dilimi**: gösterimler ve "bugün" hesabı `Europe/Istanbul`.
 
@@ -255,6 +338,7 @@ Doğrulama hatası: `400 { error, code: "VALIDATION", issues }`. Sık deneme: `4
 3. Sunucu davranışı değiştiyse uçtan uca test (`npm run test:e2e`, geliştirildiğinde) tamamen geçer; yeni kural için test eklenmiştir. Testler ortak veritabanında kendi verisini oluşturur ve temizler (§7.1).
 4. Gizli bilgi yok (`git diff` kontrol edildi), ilgili belge güncellendi.
 5. Dosyalar §3 hedef ağacındaki yerinde; diff §8.1'e göre gözden geçirildi (gereksiz/kullanılmayan kod yok, adlar açıklayıcı, fonksiyonlar kısa).
+6. Yazılan her dosya referanstaki karşılığıyla (GitHub'dan okunarak, §0.1) karşılaştırıldı: dışa aktarılan adlar, mesaj metinleri, hata kodları ve davranış aynı; farklar yalnızca §0.2 tablosundakiler ve görevin/prompt'un açıkça istedikleri (§0.3).
 
 ## 10. Hızlı başlangıç
 

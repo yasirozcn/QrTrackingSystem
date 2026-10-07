@@ -40,149 +40,201 @@ Docs: https://docs.expo.dev/eas/index.md
 - Expo Go only includes its bundled native modules. After adding a library with native code, the app needs a development build: `npx expo run:ios|android` locally, or `eas build --profile development`.
 - Prefer recommended Expo modules over third-party libraries, and check your available skills before adding dependencies. Docs: https://docs.expo.dev/versions/latest/index.md
 
+
 ---
 
 # AGENTS.md — QrScannerApp (öğrenci + kiosk uygulaması)
 
-Önce kökteki [`../AGENTS.md`](../AGENTS.md) dosyasını okuyun: protokol, API sözleşmesi ve iş kuralları oradadır ve **bağlayıcıdır**.
-Arayüz tasarımı serbesttir; ekranların **akışı, sunucuyla konuşma biçimi ve güvenlik kuralları** aşağıdaki gibi olmalıdır.
+Önce kökteki [`../AGENTS.md`](../AGENTS.md) dosyasını okuyun: protokol, API sözleşmesi, iş kuralları ve **referans kaynak kodu (§0)** oradadır ve **bağlayıcıdır**.
+Bu dosya uygulamanın **her ekranını, her `lib` dosyasını ve kurallarını** anlatır.
+
+**Referans:** her dosyanın karşılığı `https://raw.githubusercontent.com/yasirozcn/FenBahceleri/5387bef/QrScannerApp/<aynı yol>` — yalnızca web üzerinden okunur, **bilgisayara indirilmez** (kök AGENTS.md §0.1). Yazmadan önce okuyun; kök AGENTS.md §0.2'deki farkları uygulayın
+(uygulamada: görünen okul adı `İzmir Fen`, logo harfleri `İF`, APK adı `izmir-fen-kiosk.apk`; geri kalan her şey aynı).
+
+**Prompt önceliği:** görev referansta olmayan bir ekran/özellik veya var olan bir ekranın değişmesini isterse prompt esastır (kök AGENTS.md §0.3). Değişmeyenler: BLE yapısı (`lib/ble.ts` tarama modeli, `modules/kiosk-beacon` yayını, jeton biçimi, servis UUID), sunucuyla yalnızca `lib/api.ts` → `/api/mobile/*` üzerinden konuşma, `protocol.ts`, `device.ts` cihaz kimliği/güvenli depo anahtarları, kioskta QR'ın cihazda üretilmesi. Yeni ekran eklenirse §2 ağacı ve §4 tablosu aynı işte güncellenir.
 
 ## 1. Teknoloji
 
 | Konu | Seçim |
 | --- | --- |
-| Çatı | Expo SDK 57, React Native 0.86, React 19, TypeScript strict, Expo Router (dosya tabanlı) |
-| Kamera / QR | `expo-camera` (`CameraView`, `barcodeScannerSettings: { barcodeTypes: ["qr"] }`) |
+| Çatı | Expo SDK 57, React Native 0.86, React 19, TypeScript strict, **Expo Router** (dosya tabanlı; ekranlar `src/app/`) |
+| Kamera / QR okuma | `expo-camera` (`CameraView`, `useCameraPermissions`, `barcodeScannerSettings: { barcodeTypes: ["qr"] }`) |
 | QR gösterme | `react-native-qrcode-svg` (+ `react-native-svg`) |
-| Kripto | `@noble/hashes` (HMAC-SHA256), `expo-crypto` (rastgele bayt, UUID) |
+| Kripto | `@noble/hashes` (HMAC-SHA256; içe aktarma yolları `@noble/hashes/hmac.js`, `sha2.js`, `utils.js`), `expo-crypto` (rastgele bayt, UUID) |
 | Güvenli depo | `expo-secure-store` (`AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`) |
-| BLE tarama | `react-native-ble-plx` (yalnızca geliştirme/mağaza derlemesinde; **Expo Go'da yok**) |
-| BLE yayını | yerel Expo modülü `modules/kiosk-beacon` (Android Kotlin; iOS "desteklenmiyor" döner) |
-| Ekran açık kalsın | `expo-keep-awake` (kiosk) |
-| Derleme ayarı | `app.config.ts` (`expo-build-properties`: adres `http://` ise Android düz HTTP izni) |
+| BLE tarama | `react-native-ble-plx` (yalnızca geliştirme/mağaza derlemesinde; **Expo Go'da yok** → koşullu `require`) |
+| BLE yayını | yerel Expo modülü `modules/kiosk-beacon` (Android Kotlin; iOS "desteklenmiyor") — içe aktarma `@modules/kiosk-beacon` |
+| Ekran açık kalsın | `expo-keep-awake` (`useKeepAwake`, kiosk) |
+| İkonlar | `react-native-svg` ile `src/components/icons.tsx` |
+| Derleme ayarı | `app.config.ts` (hazır; `expo-build-properties`: adres `http://` ise Android düz HTTP izni) |
 
-Sunucu adresi: `.env` → `EXPO_PUBLIC_API_URL` (derlemede uygulamaya gömülür). Canlıda `https://…`.
+Tüm paketler **kurulu**; yeni paket eklenmez. Yol takma adları (`tsconfig.json`, hazır): `@/*` → `src/*`, `@modules/*` → `modules/*`.
+Sunucu adresi: `.env` → `EXPO_PUBLIC_API_URL` (derlemede uygulamaya gömülür; değişince Metro'yu yeniden başlatın). Canlıda `https://…`.
 
 ## 2. Klasör yapısı (hedef ağaç)
 
-Geliştirme bittiğinde QrScannerApp tam olarak budur (kök AGENTS.md §0): aynı yollar, dosya adları, ekran yolları ve dışa aktarılan adlar.
-Şu an hazır olanlar: yapılandırma dosyaları, `assets/`, `src/app/_layout.tsx`, `src/app/index.tsx` (geçici bağlantı testi), `src/lib/config.ts`. Geri kalan her şey ⏳.
-Ek kökler: `app.json`, `app.config.ts`, `eas.json`⏳, `README.md`⏳, `CIHAZ_TESTI.md`⏳ (cihazla test rehberi), `TESTFLIGHT.md`⏳.
+✅ = depoda hazır · ⏳ = ekip geliştirecek. Ekran yolları (Expo Router) ve dosya adları değiştirilmez.
 
 ```
-src/app/                    Ekranlar (Expo Router)
-  _layout.tsx               SessionProvider + Stack + BluetoothGate
-  index.tsx                 Açılış: oturuma göre yönlendirir; yoksa "Öğrenci girişi / Yönetici girişi (kiosk) / Bluetooth testi"
-  student-login.tsx         e-posta → (şifre oluştur | şifre)
-  student-home.tsx          durum (okulda/dışarıda), "QR okut", son hareketler, çıkış yap
-  scan.tsx                  (ilk okutmada yön seçimi) → kamera + BLE tarama → sonuç
-  admin-login.tsx           kiosk hesabıyla giriş
-  kiosk-select.tsx          kiosk seçimi
-  kiosk/[id].tsx            dönen QR + BLE yayını + son okutanlar
-  ble-debug.tsx             Bluetooth testi (durum, çevredeki cihazlar, jeton, log)
-src/components/             ui.tsx (Screen, Title, Button, Field, ErrorBox, InfoBox, Card), BluetoothGate.tsx
-src/lib/
-  config.ts                 API_URL, renkler
-  api.ts                    api<T>() istemcisi + yanıt tipleri (kök AGENTS.md §5 ile aynı)
-  session.tsx               SessionProvider: studentToken, adminToken, config
-  device.ts                 deviceId + deviceSecret üretimi/saklanması, token saklama
-  protocol.ts               QR/BLE/istek imzası — sunucudaki ile BİREBİR aynı
-  ble.ts                    BLE durum, tarama, jeton çözme, [BLE] log arabelleği
-modules/kiosk-beacon/       Android BLE yayın modülü: index.ts (KioskBeacon), expo-module.config.json,
-                            android/ (build.gradle, AndroidManifest.xml, KioskBeaconModule.kt), ios/ (KioskBeaconModule.swift, podspec)
-tools/
-  mac-kiosk-beacon.swift    Mac'i test kioskuna çevirir (terminalde QR + BLE yerel ad yayını)
-  ios-kur.sh                iPhone'a Release derleyip kurar (TEAM_ID gerekir)
-  android-apk.sh            Android kiosk APK'sı (Java 17 gerekir)
+QrScannerApp/
+├── AGENTS.md, CLAUDE.md ✅ · README.md ⏳ · CIHAZ_TESTI.md ⏳ · TESTFLIGHT.md ⏳
+├── package.json ✅ · app.json ✅ · app.config.ts ✅ · tsconfig.json ✅ · eslint.config.js ✅ · .env.example ✅ · assets/ ✅
+├── eas.json ⏳                     profiller: development · preview · production · kiosk-lan (gerçek IP/kimlik yazılmaz)
+├── modules/kiosk-beacon/ ⏳        Android BLE yayın modülü
+│   ├── index.ts                           KioskBeacon { isSupported, lastError, start, stop }
+│   ├── expo-module.config.json
+│   ├── android/build.gradle · android/src/main/AndroidManifest.xml
+│   ├── android/src/main/java/expo/modules/kioskbeacon/KioskBeaconModule.kt
+│   └── ios/KioskBeaconModule.swift · ios/KioskBeacon.podspec
+├── tools/ ⏳                               mac-kiosk-beacon.swift · ios-kur.sh · android-apk.sh
+└── src/
+    ├── app/                               EKRANLAR
+    │   ├── _layout.tsx ✅ (oturum altyapısında SessionProvider, Bluetooth uyarısında BluetoothGate eklenir)
+    │   ├── index.tsx ✅ GEÇİCİ → açılış ekranıyla DEĞİŞTİRİLİR
+    │   ├── student-login.tsx ⏳      e-posta → şifre oluştur | şifre
+    │   ├── student-home.tsx ⏳       durum, son hareketler, "QR okut", çıkış yap
+    │   ├── scan.tsx ⏳       ilk okutmada yön seçimi → kamera (+BLE) → sonuç
+    │   ├── admin-login.tsx ⏳        kiosk hesabıyla giriş
+    │   ├── kiosk-select.tsx ⏳       kiosk seçimi
+    │   ├── kiosk/[id].tsx ⏳ dönen QR + BLE yayını + son okutan
+    │   └── ble-debug.tsx ⏳          Bluetooth testi
+    ├── components/
+    │   ├── ui.tsx ⏳                 mono, Screen, Title, Button, Field, ErrorBox, InfoBox, Card, TopBar, Pill, styles
+    │   ├── icons.tsx ⏳              IconBack, IconArrowRight, IconCheck, IconIn, IconOut, IconQr, IconBluetooth, IconBluetoothOff, IconInfo, IconAlert, IconX, IconPhone, IconShield, IconMail, IconLogout, IconCamera
+    │   └── BluetoothGate.tsx ⏳      Bluetooth kapalı/izin yok uyarısı
+    └── lib/
+        ├── config.ts ✅ API_URL, colors (renk paleti referansınkiyle değiştirilir)
+        ├── api.ts ⏳                 ApiError, api<T>(), yanıt tipleri
+        ├── device.ts ⏳              getDeviceIdentity, clearBinding, tokens
+        ├── session.tsx ⏳            SessionProvider, useSession
+        ├── protocol.ts ⏳            PROTOCOL_VERSION, slotAt, buildQrPayload, isOurQr, bleToken, requestSignature, __test
+        └── ble.ts ⏳                 bleLog, getBleLog, clearBleLog, subscribeBleLog, isBleAvailable, subscribeBtState, openBluetoothSettings, extractKioskToken, startBleScan (+ tipler BtState, Found, BleStatus, BleLogEntry, SeenDevice)
 ```
+`ios/` ve `android/` klasörleri **üretilir** (git'e girmez); elle oluşturulmaz/düzenlenmez.
 
-## 3. Akışlar
+**Katmanlar:** ekran (`src/app/`) yalnızca gösterir ve kullanıcı etkileşimini yönetir → sunucuyla konuşma yalnızca `lib/api.ts` üzerinden → gizli değerler yalnızca `lib/device.ts` → protokol hesapları yalnızca `lib/protocol.ts` → Bluetooth yalnızca `lib/ble.ts` / `modules/kiosk-beacon`.
 
-### Öğrenci
-1. **E-posta** → `POST /student/check-email { email, deviceId }`.
-   - `next: "create-password"` → şifre + tekrar (≥8) → `POST /student/set-password` (deviceSecret ve platform da gönderilir). Bu adımda telefon hesaba bağlanır; kullanıcıya bunu söyleyen bir bilgi kutusu gösterilir.
-   - `next: "password"` → `POST /student/login`.
-   - Hatalar sunucunun Türkçe mesajıyla gösterilir (`DEVICE_TAKEN`, `WRONG_DEVICE`, `NOT_FOUND`…). **Telefonda yerel "bağlı hesap" kontrolü yapılmaz.**
-2. Başarılı girişte token güvenli depoya yazılır → **Ana ekran** (`GET /student/me`): "Okuldasınız / Okul dışındasınız", buton metni `needsDirection ? "QR okut" : (IN ? "Çıkış için QR okut" : "Giriş için QR okut")`, son 10 hareket, aşağı çekince yenile.
-   `401 DEVICE_REVOKED` → oturumu sil, uyarı göster, açılışa dön. Diğer `401` → giriş ekranına.
-3. **Okutma** (`scan.tsx`):
-   - Açılışta `GET /student/me`; `needsDirection` ise kamera açılmadan önce **"Okula giriyorum / Okuldan çıkıyorum"** seçimi gösterilir. Seçim yalnızca bu okutmada `direction` olarak gönderilir.
-   - Ekranda "Bu okutma: GİRİŞ/ÇIKIŞ" (`chosenDirection ?? nextDirection`).
-   - Ekran açıkken BLE taraması çalışır; en son jeton ve zamanı tutulur. QR okununca jeton **8 sn'den yeniyse** gönderilir.
-   - QR `isOurQr` değilse uyarı, gönderme. `bleRequired` ve taze jeton yoksa "Kiosk Bluetooth sinyali bekleniyor" uyarısı, gönderme.
-   - `POST /scan { qr, ble, timestamp: Date.now(), signature, direction }`.
-   - Yanıt `DIRECTION_REQUIRED` ise yön seçimine dön. Başarıda: "Giriş/Çıkış kaydedildi", saat, `duplicate` ise "zaten kaydedilmişti", `bleVerified` sonucu.
-   - Aynı anda iki istek gitmemesi için `busy` kilidi.
+## 3. `lib` dosyaları
 
-### Kiosk (Android tablet)
-1. **Yönetici girişi** (KIOSK hesabı) → `POST /admin/login` → token güvenli depoya.
-2. **Kiosk seçimi** (`GET /kiosks`).
-3. **Kiosk ekranı** (`POST /kiosks/:id/start` → `secret`, `serverTime`):
-   - Saat farkı `offset = serverTime - Date.now()`; dilim `slotAt(Date.now() + offset, slotSeconds)`, 250 ms'de bir kontrol edilir.
-   - Her dilimde yeni QR (`buildQrPayload(secret, kioskId, slot)`) ve yeni BLE jetonu (`KioskBeacon.start(serviceUuid, bleToken(...))`).
-   - QR'ın altında kalan süre çubuğu; ekran kapanmaz (`useKeepAwake`); yatay/dikey yerleşim.
-   - 3 sn'de bir `GET /kiosks/:id/feed?since=` → yeni okutan öğrencinin adı ve "Giriş/Çıkış" 4 sn gösterilir; sunucuya ulaşılamazsa "çevrimdışı" göstergesi (QR üretimi internetsiz de sürer).
-   - Android 12+ için `BLUETOOTH_ADVERTISE` + `BLUETOOTH_CONNECT` izinleri istenir. Yayın durumu ekranda: açık / kapalı / hata.
-   - `401` → yönetici oturumunu sil, girişe dön.
+### `config.ts` (hazır; ortak görünüm yapılırken `colors` güncellenir)
+`API_URL` = `EXPO_PUBLIC_API_URL` ?? `expoConfig.extra.apiUrl` ?? `http://localhost:3000` (sondaki `/` silinir).
+`colors` anahtarları (referansla aynı değerler): `brand #17613C, brandDark #0F4A2C, brandSoft #E3EFE6, ink #14211A, inkSoft #4A564F, muted #6B7570, line #DDDAD0, lineSoft #ECEAE3, lineStrong #C9C5B8, bg #F4F3EE, danger #B42318, dangerSoft #FCE8E6, dangerInk #8F1C13, dangerLine #F1B8B2, warn #9A5B00, warnSoft #FBF0DC, warnInk #7A4700, exit #1E4FA8, exitSoft #E4ECF8, exitInk #173E85, white #ffffff`.
 
-### Bluetooth
-- `BluetoothGate` (kök layout): Bluetooth kapalıysa veya izin yoksa kullanıcıyı açmaya yönlendiren pencere (iOS: Ayarlar'ı açar ve Denetim Merkezi'ni tarif eder; Android: Bluetooth'u açma isteği). "Şimdilik geç" denebilir; uygulama öne gelince tekrar sorar. Expo Go'da (modül yok) görünmez.
-- Tarama filtresiz yapılır (`startDeviceScan(null, { allowDuplicates: true })`) ve her pakette jeton aranır: önce `serviceData[BLE_SERVICE_UUID]` (base64 → hex, 16 karakter), sonra `localName` `^FB[0-9a-f]{16}$`.
-- Tüm olaylar `bleLog()` ile `[BLE]` önekli konsola ve uygulama içi log arabelleğine (son 300 satır) yazılır; **Bluetooth testi** ekranı bunları, cihaz listesini (ad, RSSI, servisler, KIOSK işareti) ve son jetonu gösterir.
+### `api.ts`
+- `class ApiError(status, message, code)`.
+- `api<T>(path, { method = "GET", body, token, timeoutMs = 15000 })`: `fetch(API_URL + path)`, başlıklar `Accept: application/json`, gövde varsa `Content-Type: application/json`, token varsa `Authorization: Bearer`. `AbortController` ile zaman aşımı.
+  - Ağ hatası → `console.warn("[api] <METHOD> <path> başarısız:", e)` sonra `ApiError(0, "Sunucuya ulaşılamadı. İnternet bağlantınızı kontrol edin.", "NETWORK")`; zaman aşımı (`AbortError`) → `ApiError(0, "Sunucu zamanında yanıt vermedi. Tekrar deneyin.", "TIMEOUT")`.
+  - Başarısız yanıt → `ApiError(res.status, data.error ?? "Beklenmeyen hata (<status>).", data.code ?? "ERROR")`.
+- Yanıt tipleri (kök AGENTS.md §5 ile aynı): `StudentSummary, AuthResponse, MeResponse, ScanResponse, AppConfig, KioskInfo, KioskStart, KioskFeed` (`KioskFeed` yalnızca `serverTime` ve `events` içerir).
 
-## 4. Cihaz kimliği ve güvenlik
+### `device.ts`
+Güvenli depo anahtarları: `fb.deviceId, fb.deviceSecret, fb.boundEmail, fb.studentToken, fb.adminToken` (protokol; değiştirmeyin).
+- `getDeviceIdentity()` → `{ deviceId, deviceSecret }`; ilk çağrıda `Crypto.randomUUID()` + 32 rastgele bayt (hex, 64 karakter) üretilip saklanır, bellek içinde önbelleğe alınır, **bir daha değişmez**.
+- `clearBinding()` → `fb.boundEmail` ve `fb.studentToken` silinir (cihaz kimliği silinmez).
+- `tokens` → `getStudent/setStudent/clearStudent/getAdmin/setAdmin/clearAdmin`.
 
-- `deviceId` (UUID) ve `deviceSecret` (32 rastgele bayt, hex) ilk ihtiyaçta üretilir ve SecureStore'da saklanır; bir daha değişmez. (iOS'ta Keychain kayıtları uygulama silinse de kalır.)
+### `session.tsx`
+`SessionProvider` + `useSession()` → `{ ready, studentToken, adminToken, student, config, setStudentSession(token, student), setStudent, clearStudentSession, setAdminSession(token), clearAdminSession, refreshConfig }`.
+Açılışta iki token depodan okunur → `ready = true` → arka planda `GET /api/mobile/config` (hata olursa `config` null kalır; uygulama yine açılır). Context dışında kullanılırsa "useSession, SessionProvider içinde kullanılmalı" hatası.
+
+### `protocol.ts`
+Sunucudaki `AdminPanel/src/lib/protocol.ts` ile **aynı kurallar** (kök AGENTS.md §4): `PROTOCOL_VERSION = "FB2"`, `slotAt(nowMs, slotSeconds)`, `buildQrPayload(secretHex, kioskId, slot)` (base64url elle, dolgusuz), `isOurQr(payload)` (`"FB2."` ile başlar ve 4 parça), `bleToken`, `requestSignature(deviceSecretHex, qr, ble|null, timestamp)`, `__test = { base64url }`.
+Test vektörleri: kök AGENTS.md §4 (sunucu ve mobil aynı sonucu vermeli).
+
+### `ble.ts`
+- `react-native-ble-plx` **koşullu `require`** ile yüklenir (Expo Go'da yoksa `available = false`, uygulama çökmez, durum `"unavailable"`).
+- Log: `bleLog(msg)` → `[BLE] ` önekiyle `console.log` + 300 satırlık bellek arabelleği; `getBleLog`, `clearBleLog`, `subscribeBleLog`.
+- `subscribeBtState(fn)` (ilk değer hemen gelir; iOS'ta ilk çağrı izin penceresini açar), `openBluetoothSettings(state)` (Android: kapalıysa `REQUEST_ENABLE` isteği, değilse uygulama ayarları; iOS: uygulama ayarları).
+- Android izinleri: API ≥ 31 → `BLUETOOTH_SCAN` + `BLUETOOTH_CONNECT`; daha eski → `ACCESS_FINE_LOCATION`.
+- `extractKioskToken(device, serviceUuid)`: önce `serviceData[serviceUuid]` (base64 → hex, 16 karakter → `source: "service-data"`), sonra yerel ad `^FB([0-9a-fA-F]{16})$` (`source: "local-name"`).
+- `startBleScan(serviceUuid, onUpdate, { onDevices?, verbose? })` → durdurma fonksiyonu döner. **Filtresiz** tarama (`startDeviceScan(null, { allowDuplicates: true }, …)`), Bluetooth açılınca başlar/kapanınca durur, 5 sn'de bir özet logu, `onDevices` verilirse 1 sn'de bir cihaz listesi (kiosklar önce, sonra RSSI'ye göre). Durumlar: `unavailable | no-permission | off | scanning | found`.
+
+## 4. Ekranlar (akış ve metinler referansla aynı)
+
+Tüm ekranlar `Screen` içinde; üst gezinme `TopBar` (geri oku + küçük başlık). Hatalar `ErrorBox`, bilgiler `InfoBox`. Sunucu hata mesajları (`e.message`) **aynen** gösterilir.
+
+| Ekran | API | Davranış ve metinler |
+| --- | --- | --- |
+| `index.tsx` Açılış | — | `ready` değilse yükleniyor. `adminToken` → `<Redirect href="/kiosk-select" />`; `studentToken` → `/student-home`. Yoksa: logo kutusu `İF` + "İzmir Fen", başlık "Okul Giriş-Çıkış", "Okula girişte ve çıkışta kiosk ekranındaki QR kodu bu uygulamayla okutun.", bilgi kartı ("Kapıdaki kodu okutun" QR ikonu, "Bluetooth açık olsun" Bluetooth ikonu), düğmeler **Öğrenci girişi** (`/student-login`), **Yönetici girişi (kiosk)** (secondary, `/admin-login`), **Bluetooth testi** (ghost, `/ble-debug`); altta küçük "Sunucu: {API_URL}" |
+| `student-login.tsx` | `POST /student/check-email`, `/student/set-password`, `/student/login` | Adımlar `email → create-password | password` (aynı ekran). **E-posta**: başlık "Öğrenci girişi", "Okulun sisteme kaydettiği e-posta adresinizi girin.", e-posta klavyesi, otomatik büyük harf/düzeltme yok, "Devam". E-posta küçük harfe çevrilir; `@` yoksa "Geçerli bir e-posta girin.". **Şifre oluşturun** (TopBar "İlk giriş"): "Merhaba {firstName}. Bundan sonraki girişlerde bu şifreyi kullanacaksınız.", InfoBox "Şifrenizi kaydettiğinizde hesabınız bu telefona bağlanır. Başka bir telefondan giriş yapmak için okul yönetiminin cihazınızı sıfırlaması gerekir.", alanlar "Şifre (en az 8 karakter)" + "Şifre (tekrar)", canlı kural göstergeleri "En az 8 karakter" / "İki şifre aynı", istemci hataları "Şifre en az 8 karakter olmalı." / "Şifreler eşleşmiyor.", düğme "Şifreyi kaydet ve giriş yap"; gönderilen `platform` = `ios`/`android`/`unknown`. **Şifre**: "Merhaba {firstName}. Şifrenizi girin.", "Giriş yap", altta "Şifrenizi unuttuysanız okul yönetiminden şifre sıfırlaması isteyin.". Başarı → `setStudentSession` → `router.replace("/student-home")`. Geri: e-posta adımındaysa önceki ekran, değilse e-posta adımı. Bilinmeyen hata: "Beklenmeyen bir hata oluştu.". **Yerel "bu telefon başka hesaba bağlı" kontrolü yapılmaz** |
+| `student-home.tsx` | `GET /student/me` | Ekran her odaklandığında (`useFocusEffect`) yüklenir; aşağı çekince yenile. Üstte "Merhaba" + ad soyad, sağda **Çıkış yap** (onay: "Çıkış yap" / "Uygulamadan çıkış yapılsın mı? Tekrar girişte şifreniz sorulur." / "Vazgeç") → oturumu sil → `/`. Durum kartı: Pill "Okulda"/"Dışarıda", sınıf, "Şu anki durum", **"Okuldasınız" / "Okul dışındasınız"**. "Son hareketler": Giriş/Çıkış ikonlu satırlar, kiosk adı veya **"Manuel kayıt"**, tarih-saat (`gg.aa ss:dd`), boşsa "Henüz kayıt yok.". Altta büyük düğme: `needsDirection ? "QR okut" : inside ? "Çıkış için QR okut" : "Giriş için QR okut"`, alt yazı "Kapıdaki ekrana yaklaşın" → `/scan`. `DEVICE_REVOKED` → `clearBinding` + oturumu sil + uyarı "Cihaz bağlantısı kaldırıldı" / "Okul yönetimi bu telefonun bağlantısını kaldırdı. E-postanızla giriş yapıp yeni şifre oluşturabilirsiniz." → `/`. Diğer 401 → oturumu sil → `/student-login`. Diğer hata: mesaj veya "Bilgiler yüklenemedi." |
+| `scan.tsx` | `GET /student/me`, `POST /scan` | Ayrıntı §4.1 |
+| `admin-login.tsx` | `POST /admin/login` | TopBar "Kiosk kurulumu"; başlık "Yönetici girişi", "Bu giriş, cihazı kapıdaki QR ekranına (kiosk) dönüştürür.", InfoBox "Kiosk için Android tablet önerilir: Bluetooth yakınlık doğrulaması yalnızca Android'de yayınlanabilir.", alanlar E-posta + Şifre, "Giriş yap" → `setAdminSession` → `router.replace("/kiosk-select")`. Hata: mesaj veya "Giriş yapılamadı." |
+| `kiosk-select.tsx` | `GET /kiosks` | Üst: logo `İF`, "Kapı Tableti", **Yönetici oturumunu kapat** (danger) → oturumu sil → `/`. Başlık "Kiosk seçin", "Bu tabletin duracağı kapıyı seçin. Ekran QR moduna geçer ve kapanmaz.". Kartlar: kiosk adı, "Giriş · çıkış kiosku", "QR ekranını aç →" → `/kiosk/[id]`. Altta bilgi şeridi "Kiosk QR ile birlikte Bluetooth sinyali yayınlar. Tableti şarja takılı ve Bluetooth açık bırakın." + **Bluetooth testi**. 401 → oturumu sil → `/admin-login`. Hata: "Kiosklar yüklenemedi." |
+| `kiosk/[id].tsx` | `POST /kiosks/:id/start`, `GET /kiosks/:id/feed` | Ayrıntı §4.2 |
+| `ble-debug.tsx` | (`/config` yalnızca UUID için) | Bluetooth durumu, tarama durumu, cihaz sayısı, son kiosk jetonu (kaynak, RSSI, kaç sn önce), sekmeler **Cihazlar** (kiosk olanlar "★ KIOSK" ve en üstte) / **Log**, "Ayrıntılı" anahtarı, "Logu temizle". Sunucuya ulaşılamazsa varsayılan UUID `6f1b0000-5a1e-4c1a-9b9e-fb0000000001` |
+
+### 4.1 `scan.tsx` (öğrenci QR okutma)
+- Durumlar (`phase`): `scan | sending | done | error`. `busy` ref'i ile aynı anda tek istek.
+- Kamera izni yoksa: "QR okutmak için kamera izni gerekiyor." + **Kamera izni ver** (tekrar sorulamıyorsa **Ayarları aç**) + Geri.
+- Açılışta `GET /student/me` → `needsDirection`, `nextDirection`. **`needsDirection` ve yön seçilmemişse kamera açılmadan önce** (TopBar "İlk okutma"): "İlk okutmanız", "Şu an okula mı giriyorsunuz, okuldan mı çıkıyorsunuz? Bunu yalnızca bir kez seçersiniz; sonraki okutmalarda sistem sırayla giriş ve çıkış kaydeder.", iki kart **Okula giriyorum** / **Okuldan çıkıyorum**, "Vazgeç".
+- Kamera ekranı (koyu zemin): üstte rozet **"Bu okutma: GİRİŞ / ÇIKIŞ"** (`chosenDirection ?? nextDirection`, yoksa gösterilmez), "Kiosk QR kodunu okutun", "Kiosk ekranındaki kodu çerçevenin içine alın. Kod birkaç saniyede bir yenilenir.", çerçeve köşeleri, gönderilirken "Doğrulanıyor…". Altta BLE durum satırı (`unavailable` "Bluetooth doğrulaması bu sürümde kapalı", `no-permission` "Bluetooth izni verilmedi", `off` "Bluetooth kapalı", `scanning` "Kiosk sinyali aranıyor…", `found` "Kiosk sinyali alındı"), uyarı kutusu (`hint`), düğmeler **Bluetooth testi** / **Vazgeç**.
+- BLE: ekran açıkken `startBleScan(config.bleServiceUuid, …)`; son jeton bir ref'te tutulur. QR okununca jeton **8 sn'den yeniyse** (`BLE_FRESH_MS = 8000`) gönderilir.
+- QR `isOurQr` değilse istek gitmez, `hint` = "Bu QR kod okul kioskuna ait değil.". `config.bleRequired` ve taze jeton yoksa istek gitmez, `hint` = "Kiosk Bluetooth sinyali bekleniyor. Bluetooth'un açık olduğundan emin olup kioska yaklaşın.".
+- İstek: `{ qr, ble: taze ? { token, rssi } : null, timestamp: Date.now(), signature: requestSignature(deviceSecret, qr, token|null, timestamp), direction: chosenDirection }`.
+- `DIRECTION_REQUIRED` → yön seçimine dön (`hint` = sunucu mesajı). Diğer hata → hata ekranı: "Okutma kabul edilmedi" + mesaj + **Tekrar dene** / Geri.
+- Başarı ekranı (giriş yeşil, çıkış mavi zemin): ✓, "Giriş kaydedildi" / "Çıkış kaydedildi", büyük saat (`result.time`) + "Saat", "Bluetooth doğrulaması: sinyal yok / kiosk doğrulandı ✓ / jeton eşleşmedi ✗", `duplicate` ise "Bu işlem az önce zaten kaydedilmişti; velinize tekrar SMS gönderilmedi.", **Tamam** → geri.
+- Her adım `bleLog(...)` ile loglanır (QR okundu + gönderilecek jeton, sunucu kabul/red).
+
+### 4.2 `kiosk/[id].tsx` (kiosk ekranı)
+- `useKeepAwake()`. Açılışta `POST /kiosks/:id/start` → `offset = serverTime - Date.now()`, `since = serverTime (ISO)`. 401 → yönetici oturumunu sil → `/admin-login`; diğer hata: mesaj veya "Kiosk başlatılamadı." + Geri.
+- 250 ms'de bir saat; `serverNow = now + offset`, `slot = slotAt(serverNow, slotSeconds)`, `remaining = slotSeconds - (serverNow/1000 % slotSeconds)`. QR = `buildQrPayload(secret, kioskId, slot)` — **cihazda üretilir**, internet kesilse de sürer.
+- Yerleşim: yatay ekranda solda yeşil bilgi paneli + sağda QR; dikeyde üstte panel. Panel: "İzmir Fen" + saat (ss:dd); son okutan yoksa "GİRİŞ · ÇIKIŞ" (yatayda iki satır), kiosk adı, yatayda 3 adım ("Okul uygulamasını açın", "\"QR okut\"a basıp bu kodu okutun", "Adınızı ekranda görünce geçin"); altta "Okul uygulamasını açıp bu kodu okutun. Giriş mi çıkış mı olduğunu sistem bilir.".
+- QR: `react-native-qrcode-svg`, `ecl="M"`, `quietZone={8}`, boyut `min(yatay ? yükseklik*0.6 : genişlik*0.72, 480)`; altında kalan süre çubuğu ve "Kod N sn içinde yenilenecek".
+- Akış: 3 sn'de bir `GET /kiosks/:id/feed?since=` (zaman aşımı 5 sn) → `offset` güncellenir; daha önce gösterilmemiş ilk olay **4 sn** panelde büyük kartta: baş harfler, "Giriş ✓"/"Çıkış ✓", ad soyad, "sınıf · saat". Hata → "Sunucuya ulaşılamıyor" (kırmızı nokta), başarı → "Sunucu bağlantısı var".
+- BLE yayını: her dilimde `KioskBeacon.start(bleServiceUuid, bleToken(secret, kioskId, slot))`; Android 12+ (API ≥ 31) `BLUETOOTH_ADVERTISE` + `BLUETOOTH_CONNECT` izni bir kez istenir. Durum metinleri: `off` "Bluetooth kapalı veya yayın kullanılamıyor" (iOS: "BLE yayını yok"), `starting` "BLE başlatılıyor", `on` "BLE yayını açık", `unsupported` "BLE yayını yok (iOS kiosk)", `error` "BLE hatası: <kod>". Android'de yayın yoksa QR'ın üstünde kırmızı uyarı şeridi. Çıkışta `KioskBeacon.stop()`. Her dilim `bleLog("Kiosk yayında: jeton … (dilim …)")`.
+- Çıkış: sağ altta "Çıkmak için basılı tutun" (1,5 sn uzun basma) → onay "Kiosk modundan çık" / "QR ekranı kapatılsın mı?" → geri.
+
+### 4.3 `BluetoothGate.tsx` (`_layout.tsx`'te `Stack`'ten sonra)
+Bluetooth `PoweredOff` veya `Unauthorized` ise alttan açılan modal: başlık "Bluetooth kapalı" / "Bluetooth izni gerekli", metin "Okul kioskunun yanında olduğunuzu doğrulamak için Bluetooth açık olmalı. " + platforma göre talimat (referanstaki metinler), düğme iOS+kapalı "Ayarları aç" / Android+kapalı "Bluetooth'u aç" / izin "İzin ver", **Şimdilik geç**. Uygulama öne gelince tekrar sorar; Bluetooth açılınca kapanır. Expo Go'da (`unavailable`) görünmez.
+
+## 5. `modules/kiosk-beacon`
+
+Referanstaki 7 dosyanın aynısı. `index.ts`: `requireOptionalNativeModule<KioskBeaconNative>("KioskBeacon")` (Expo Go'da null) ve sarmalayıcı `KioskBeacon`: `isSupported()` (hata yakalanır), `lastError()` (modül yoksa `"NATIVE_MODULE_MISSING"`), `start(serviceUuid, tokenHex)`, `stop()`.
+Android (`KioskBeaconModule.kt`): `BluetoothLeAdvertiser`; `ADVERTISE_MODE_LOW_LATENCY`, `ADVERTISE_TX_POWER_MEDIUM`, bağlanılamaz, süresiz; veri: cihaz adı/güç yok, `addServiceData(ParcelUuid(uuid), 8 bayt jeton)`; her başlatmada önce eski yayın durdurulur; hata `ADVERTISE_FAILED_<kod>`; `OnDestroy` → durdur. iOS: `isSupported` false (Apple service data yayınlayamaz).
+Yerel modül değişince **yeniden derleme** gerekir (`npx expo run:android --device`); Metro yenilemesi yetmez.
+
+## 6. Cihaz kimliği ve güvenlik
+
+- `deviceId` ve `deviceSecret` bir kez üretilir, SecureStore'da saklanır; değişmez. (iOS'ta Keychain kayıtları uygulama silinse de kalır.)
 - `deviceSecret` yalnızca `set-password` isteğinde sunucuya gider; sonra yalnızca imza üretmekte kullanılır.
-- Tokenlar SecureStore'da: `fb.studentToken`, `fb.adminToken`. AsyncStorage'a gizli bilgi yazılmaz.
-- Şifre, token veya anahtar loglanmaz (BLE jetonları kısa ömürlü ve gizli değildir, loglanabilir).
+- Token'lar yalnızca SecureStore'da. AsyncStorage'a gizli bilgi yazılmaz.
+- Şifre, token, `deviceSecret`, kiosk `secret` loglanmaz (BLE jetonları kısa ömürlüdür, loglanabilir).
 - Galeriden QR seçme yoktur; yalnızca canlı kamera.
 
-## 5. API istemcisi kuralları (`src/lib/api.ts`)
-
-- `api<T>(path, { method, body, token, timeoutMs = 15000 })`: JSON gönderir, `Authorization: Bearer`, zaman aşımı `AbortController` ile.
-- Başarısız yanıt → `ApiError(status, data.error, data.code)`; ekranlar `e.message`'ı doğrudan gösterir.
-- Ağ hatası → `ApiError(0, "Sunucuya ulaşılamadı…", "NETWORK")`, zaman aşımı → `"TIMEOUT"`; gerçek hata `console.warn("[api] …")` ile loglanır.
-- Expo SDK 57'de global `fetch` = `expo/fetch`; React Native'in eski `FormData { uri }` biçimini desteklemez (dosya yükleme gerekirse `expo-file-system` `File` kullanın).
-
-## 6. Komutlar ve test
+## 7. Komutlar ve test
 
 ```bash
 npm install
-npm run typecheck && npx eslint src         # her işten sonra
-npx expo start --go                          # Expo Go ile hızlı arayüz denemesi (BLE YOK)
-npx expo run:ios --device                    # geliştirme derlemesi (BLE var, Metro logları terminalde)
+cp .env.example .env                         # EXPO_PUBLIC_API_URL=http://<bilgisayarın yerel IP'si>:3000  (ipconfig getifaddr en0)
+npm run typecheck && npx eslint src          # HER işten sonra — hatasız/uyarısız olmalı
+npx expo start --go                          # Expo Go ile hızlı arayüz denemesi (BLE YOK, yerel modül YOK)
+npx expo run:ios --device                    # geliştirme derlemesi (BLE var, loglar terminalde)
 npx expo run:android --device                # Android (Java 17 + Android SDK + NDK 27.1 gerekir)
 TEAM_ID=XXXXXXXXXX bash tools/ios-kur.sh     # bağımsız Release derlemesi → iPhone
-bash tools/android-apk.sh                    # kiosk APK'sı (arm64-v8a)
+bash tools/android-apk.sh                    # kiosk APK'sı (arm64-v8a) → izmir-fen-kiosk.apk
 swift tools/mac-kiosk-beacon.swift --email KIOSK_EPOSTA   # Mac'i test kioskuna çevirir (şifre gizli sorulur)
 ```
-`ios/` ve `android/` klasörleri üretilir (git'e girmez); elle düzenlemeyin. `tools/` betikleri ve cihazla test rehberi (`CIHAZ_TESTI.md`) ekip tarafından geliştirilecek.
+Uygulamanın her ekranı için bilgisayarda **AdminPanel `npm run dev` açık** olmalı; telefon ve bilgisayar aynı Wi-Fi'da olmalı.
+Hangi işin hangi derlemede denenebileceği: arayüz + API (öğrenci girişi, ana ekran, kamera ile okutma, kiosk QR) → Expo Go yeter; BLE tarama/yayın → geliştirme derlemesi (`expo run:*`) gerekir.
 
-**Şablon hazır (başlangıç durumu).** Bu klasör çalışan bir Expo SDK 57 projesidir; tüm bağımlılıklar mevcut uygulamayla aynı sürümlerde kuruludur
-(kamera, güvenli depo, BLE, QR, kripto, keep-awake, expo-dev-client, expo-build-properties). Yeni paket eklerken `npx expo install <paket>` kullanın.
-
-| Dosya | Durum |
-| --- | --- |
-| `package.json`, `app.json`, `app.config.ts`, `tsconfig.json`, `eslint.config.js`, `assets/` | ✅ hazır (izinler ve eklentiler §1'e göre ayarlı) |
-| `src/app/_layout.tsx` | ✅ kök Stack (SessionProvider ve BluetoothGate eklenecek) |
-| `src/app/index.tsx` | ✅ GEÇİCİ: "Sunucu bağlantısını test et" → AdminPanel `/api/health` → veritabanı |
-| `src/lib/config.ts` | ✅ `API_URL` (`EXPO_PUBLIC_API_URL`) ve renkler |
-| `src/lib/api.ts, session.tsx, device.ts, protocol.ts, ble.ts`, `src/components/`, diğer ekranlar, `modules/kiosk-beacon/`, `tools/` | ⏳ ekip geliştirecek (§2) |
-
-İlk çalıştırma:
-```bash
-npm install
-cp .env.example .env            # EXPO_PUBLIC_API_URL=http://<bilgisayarın yerel IP'si>:3000
-npx expo start --go             # Expo Go ile hızlı deneme (BLE yok)  — veya:  npx expo run:ios --device / run:android --device
-```
-Uygulamada **Sunucu bağlantısını test et** → "Veritabanı bağlı" görülmeli (bilgisayarda AdminPanel `npm run dev` açık olmalı).
-
-**Sunucu adresi:** Telefon veritabanına değil, **geliştiricinin bilgisayarında çalışan AdminPanel'e** bağlanır (`EXPO_PUBLIC_API_URL=http://<bilgisayarın-yerel-IP'si>:3000`); AdminPanel de AWS'deki ortak veritabanına bağlıdır.
-
-## 7. Yapılmaması gerekenler
+## 8. Yapılmaması gerekenler
 
 - Sunucu kararlarını istemcide tekrar vermek (yön, cihaz bağlılığı, QR geçerliliği) — istemci yalnızca gösterir ve gönderir.
-- `protocol.ts`'i sunucuyu güncellemeden değiştirmek.
-- BLE kütüphanesini koşulsuz içe aktarmak: `require` ile, hata yakalanarak yüklenir ki Expo Go'da uygulama çökmesin.
-- Kiosk ekranında QR'ı sunucudan çekmek: QR cihazda `secret` ile üretilir (internet kesintisinde de çalışır).
+- `protocol.ts`'i sunucuyu güncellemeden değiştirmek; güvenli depo anahtar adlarını değiştirmek.
+- BLE kütüphanesini koşulsuz `import` etmek (Expo Go'da çöker) — `ble.ts`'teki gibi `require` + `try/catch`.
+- Kiosk ekranında QR'ı sunucudan çekmek: QR cihazda `secret` ile üretilir.
+- `ios/` / `android/` klasörlerini elle düzenlemek veya git'e eklemek; paket eklemek; `app.json` paket kimliklerini değiştirmek.
+- Referanstaki `eas.json` `projectId`/`owner` değerlerini veya gerçek IP adreslerini kopyalamak.
+
+## 9. Sık karşılaşılan hatalar
+
+| Belirti | Neden / çözüm |
+| --- | --- |
+| "Sunucuya ulaşılamadı" | AdminPanel `npm run dev` kapalı, telefon farklı Wi-Fi'da, `.env` adresi yanlış (localhost değil, bilgisayarın IP'si) veya `.env` değişti ama Metro yeniden başlatılmadı (`npx expo start -c`) |
+| BLE durumu hep "Bluetooth doğrulaması bu sürümde kapalı" | Expo Go kullanılıyor; `npx expo run:ios --device` / `run:android --device` ile geliştirme derlemesi gerekir |
+| Kiosk "BLE yayını yok (iOS kiosk)" | iPhone/iPad kiosk olamaz (service data yok) — Android tablet veya Mac test kioskü kullanın |
+| `Cannot find native module 'KioskBeacon'` | Modül değişti ama uygulama yeniden derlenmedi |
+| Tüm okutmalar `BAD_SIGNATURE` | `deviceSecret` sunucudakiyle farklı (ör. uygulama silinip yeniden kuruldu, Android) → panelden **Cihazı sıfırla**, yeniden giriş |
+| Tüm okutmalar `EXPIRED_QR` | Kiosk saat farkını düzeltmiyor (`offset`) veya QR `slotAt` hesabı yanlış — test vektörleriyle karşılaştırın |
+| `Cannot find module '@noble/hashes/hmac'` | Yol `.js` uzantılı olmalı: `@noble/hashes/hmac.js` |
