@@ -67,7 +67,7 @@ Bu yapılara **dokunmadan** eklenen özellikler (yeni panel sayfası, yeni ekran
 | --- | --- | --- |
 | Görünen okul adı (panel girişi, panel menüsü, uygulama açılışı, kiosk ekranı, sayfa başlığı) | `Fen Bahçeleri` | `İzmir Fen` |
 | Logo kutusundaki harfler (panel + uygulama) | `FB` | `İF` |
-| `SCHOOL_SHORT_NAME` varsayılanı (SMS imzası, Türkçe karaktersiz) | `"Fen Bahceleri"` | `"Izmir Fen"` |
+| `SCHOOL_SHORT_NAME` varsayılanı (WhatsApp mesajı imzası, Türkçe karaktersiz) | `"Fen Bahceleri"` | `"Izmir Fen"` |
 | Panel `<title>` | `Fen Bahçeleri · Giriş-Çıkış Paneli` | `İzmir Fen · Giriş-Çıkış Paneli` |
 | Veritabanı | Yerel Docker (`AdminPanel/docker-compose.yml`, `db:up`, `db:reset`, `db:psql`, `db:import`, `POSTGRESQL_KURULUM.md`, `json-to-postgres.mjs`) | **AWS ortak geliştirme veritabanı** (`infra/dev-db/`, `npm run db:check`). Referanstaki bu yerel veritabanı dosyaları/komutları **bu projeye eklenmez** |
 | Bağlantı havuzu | 10 | 3 (`pg.ts`'te hazır) |
@@ -81,7 +81,7 @@ Bu yapılara **dokunmadan** eklenen özellikler (yeni panel sayfası, yeni ekran
 | `app.json` adları / paket kimliği | `com.fenbahceleri.giris` | `com.izmirfen.giris` (hazır) |
 | `eas.json` / EAS `projectId`, `owner` | referansın hesabı | proje sahibinin kendi EAS hesabı (referanstaki kimlikler **kopyalanmaz**) |
 | Canlı ortam adları (`deploy/`) | `fenbahceleri`, `fb_app` | `izmirfen`, `izmirfen_app` |
-| Gerçek SMS sağlayıcısı | yok (yalnızca `mock`) | isteğe bağlı son görev |
+| Veli bildirimi | SMS (`sms_messages`, yalnızca `mock`) | **WhatsApp** (`wp_messages`, `WHATSAPP_PROVIDER=mock`); gerçek WhatsApp sağlayıcısı isteğe bağlı son görev |
 
 **Değişmeyenler (protokol — dokunmayın):** `FB2`, `BLE_SERVICE_UUID`, BLE yerel ad öneki `"FB"`, panel çerezi `fb_admin`, mobil güvenli depo anahtarları `fb.deviceId / fb.deviceSecret / fb.studentToken / fb.adminToken / fb.boundEmail`, kimlik önekleri (`stu_`, `kiosk_` …), örnek veri (`seed.ts`, `@fenbahceleri.test` hesapları — hazır, değiştirmeyin).
 
@@ -91,7 +91,7 @@ Bu yapılara **dokunmadan** eklenen özellikler (yeni panel sayfası, yeni ekran
 
 1. Okul kapısında bir **kiosk** (Android tablet) durur; ekranında **5 saniyede bir değişen imzalı bir QR kod** gösterir ve aynı anda **Bluetooth (BLE) ile kısa ömürlü bir jeton** yayınlar.
 2. Öğrenci kendi telefonundaki uygulamayla QR'ı okutur. Telefon, kioskun BLE jetonunu da duyduğunu kanıtlar (QR'ın fotoğrafını eve götürüp okutmayı engeller).
-3. Sunucu okutmayı doğrular, **giriş veya çıkış** kaydı açar ve veliye SMS kaydı oluşturur.
+3. Sunucu okutmayı doğrular, **giriş veya çıkış** kaydı açar ve veliye WhatsApp mesajı kaydı oluşturur.
 4. Okul yönetimi **web panelinden** öğrencileri, cihazları, kayıtları ve reddedilen (şüpheli) okutmaları izler.
 
 **Tek kiosk, yönsüz QR:** Kioskun giriş/çıkış ayrımı yoktur. Öğrencinin **ilk** okutmasında uygulama "Giriş mi, çıkış mı?" diye sorar; sonraki her okutmada yönü **sunucu** belirler (okuldaysa çıkış, dışarıdaysa giriş).
@@ -143,13 +143,13 @@ FenBahceleri_IzmırFen/
 │       ├── lib/
 │       │   ├── db/  pg.ts ✅ · repo.ts ✅ · types.ts ✅ · seed.ts ✅      TÜM veritabanı erişimi burada
 │       │   ├── config.ts ⏳ · auth.ts ⏳ · session.ts ⏳ · api.ts ⏳         ayarlar, JWT, panel oturumu, route yardımcıları
-│       │   └── protocol.ts ⏳ · scan.ts ⏳ · sms.ts ⏳                       protokol, okutma kuralları, SMS
+│       │   └── protocol.ts ⏳ · scan.ts ⏳ · whatsapp.ts ⏳                  protokol, okutma kuralları, WhatsApp
 │       ├── components/  AutoRefresh.tsx ⏳ · Badges.tsx ⏳
 │       └── app/
 │           ├── layout.tsx ✅ · globals.css ✅ · page.tsx ✅ (GEÇİCİ) · api/health/ ✅
 │           ├── login/ ⏳                   page · LoginForm · actions
 │           ├── (panel)/ ⏳                 layout · NavLinks · actions · page (Canlı durum) · hareketler · ogrenciler (+StudentForms)
-│           │                              kiosklar (+AccountForms, DeleteKioskButton) · denemeler · sms · denetim
+│           │                              kiosklar (+AccountForms, DeleteKioskButton) · denemeler · whatsapp · denetim
 │           └── api/mobile/ ⏳              config · student/{check-email,set-password,login,me} · scan · admin/login · kiosks[/:id/{start,feed}]
 │
 └── QrScannerApp/                          Expo SDK 57 — öğrenci + kiosk uygulaması
@@ -267,14 +267,14 @@ Doğrulama hatası: `400 { error, code: "VALIDATION", issues }`. Sık deneme: `4
 4. BLE: jeton geldiyse eşleşme kontrolü (`ble_ok`); `BLE_REQUIRED=true` ise jeton yok → `BLE_MISSING`, eşleşmiyor → `BLE_MISMATCH`
 5. Aynı cihaz + kiosk + dilim daha önce **kabul** edildiyse → `REPLAY` (veritabanında kısmi tekil indeksle de korunur)
 6. **Yön**:
-   - Son kayıttan bu yana `DUPLICATE_WINDOW_SECONDS` (varsayılan 120) geçmediyse → **çift okutma**: yeni kayıt/SMS yok, `duplicate: true` ile son kayıt döner.
+   - Son kayıttan bu yana `DUPLICATE_WINDOW_SECONDS` (varsayılan 120) geçmediyse → **çift okutma**: yeni kayıt/WhatsApp mesajı yok, `duplicate: true` ile son kayıt döner.
    - Öğrencinin hiç kaydı yoksa yön istekteki `direction`'dır; yoksa `422 DIRECTION_REQUIRED` (bu durum **kaydedilmez**).
    - Kaydı varsa yön = `presenceStatus`'un tersi (IN → OUT, OUT → IN). İstekteki `direction` **yok sayılır**.
-7. Kabul: tek transaction'da `attendance_events` + `students.presence_status` + her veliye `sms_messages` (bir olay için bir veliye tek SMS).
+7. Kabul: tek transaction'da `attendance_events` + `students.presence_status` + her veliye `wp_messages` (bir olay için bir veliye tek WhatsApp mesajı).
 
-**SMS**: 1. aşamada gerçek gönderim yok (`SMS_PROVIDER=mock`): mesaj kaydedilir, durumu `MOCK_SENT` olur. Metin: `Sayin Veli, <Ad Soyad> <HH:mm>'de okula giris yapti. - <Okul>`.
+**WhatsApp**: veli bildirimleri SMS değil WhatsApp mesajıdır. 1. aşamada gerçek gönderim yok (`WHATSAPP_PROVIDER=mock`): mesaj kaydedilir, durumu `MOCK_SENT` olur. Metin: `Sayin Veli, <Ad Soyad> <HH:mm>'de okula giris yapti. - <Okul>`.
 
-**Panelden manuel giriş/çıkış**: telefonu olmayan öğrenci için; `source = MANUAL`, aynı SMS kuralları. Yön öğrencinin mevcut durumuyla aynıysa (okuldayken "giriş") hiçbir şey yapılmaz.
+**Panelden manuel giriş/çıkış**: telefonu olmayan öğrenci için; `source = MANUAL`, aynı WhatsApp kuralları. Yön öğrencinin mevcut durumuyla aynıysa (okuldayken "giriş") hiçbir şey yapılmaz.
 
 **Kiosklar ve kiosk tablet hesapları** (panel → Kiosklar)
 - Kiosk eklenir (yalnızca ad; gizli anahtarı sunucu üretir), devre dışı bırakılır/etkinleştirilir veya **kalıcı silinir**. Silinen kioskun geçmiş hareket ve okutma kayıtları korunur (`kiosk_id` NULL olur, FK `ON DELETE SET NULL`).
@@ -305,7 +305,7 @@ Doğrulama hatası: `400 { error, code: "VALIDATION", issues }`. Sık deneme: `4
 ## 8. Ortak çalışma kuralları
 
 - **Dil**: arayüz metinleri, hata mesajları, kod yorumları ve belgeler **Türkçe**; tanımlayıcılar (değişken, fonksiyon, tablo, kolon) **İngilizce**.
-- Veritabanında `snake_case`, kodda `camelCase`. Kimlikler metin ve önekli: `stu_…`, `gua_…`, `adm_…`, `kiosk_…`, `evt_…`, `att_…`, `sms_…`, `aud_…` (önek + 16 hex).
+- Veritabanında `snake_case`, kodda `camelCase`. Kimlikler metin ve önekli: `stu_…`, `gua_…`, `adm_…`, `kiosk_…`, `evt_…`, `att_…`, `wpm_…`, `aud_…` (önek + 16 hex).
 - Zamanlar veritabanında `timestamptz`, API'de ISO 8601 metin.
 - Protokol veya API sözleşmesini değiştiren her iş, **sunucu + mobil + bu dosya + uçtan uca test** birlikte güncellenmeden bitmiş sayılmaz.
 - Her yönetici işlemi `audit_logs`'a yazılır.
@@ -322,12 +322,12 @@ Doğrulama hatası: `400 { error, code: "VALIDATION", issues }`. Sık deneme: `4
 
 **Okunabilir yazın**
 - Bir dosya = bir sorumluluk. Route, Server Action ve ekranlar ince; iş kuralı `lib/` içinde.
-- Açıklayıcı İngilizce adlar (`findStudentByEmail`, `createEventWithSms`); kısaltma yok (`stu`, `tmp`, `x` yalnızca çok kısa kapsamlarda).
+- Açıklayıcı İngilizce adlar (`findStudentByEmail`, `createEventWithWhatsApp`); kısaltma yok (`stu`, `tmp`, `x` yalnızca çok kısa kapsamlarda).
 - Kısa fonksiyonlar, erken dönüş (`if (!x) return …`), en fazla 2–3 iç içe blok. Uzun koşulları adlandırılmış değişkenlere bölün.
 - Her dosyanın başında amacını anlatan 1–2 satırlık Türkçe yorum. Yorumlar **neden**'i anlatır, kodun ne yaptığını tekrar etmez.
 - TypeScript strict: `any` yok (zorunluysa nedenini yorumla), `!` (non-null) yalnızca garanti varsa, API ve veritabanı tipleri `types.ts` / `api.ts`'ten.
 - Sihirli sayı yok: süreler, sınırlar `config.ts` veya `protocol.ts` sabitlerinde (ör. `SLOT_SECONDS`, `duplicateWindowSeconds`).
-- Hatalar: sunucuda `throw new ApiError(durum, "Türkçe mesaj", "KOD")`; sessizce yutulmaz. Loglar önekli ve amaçlı: `[scan]`, `[api]`, `[db]`, `[sms]`, `[BLE]`.
+- Hatalar: sunucuda `throw new ApiError(durum, "Türkçe mesaj", "KOD")`; sessizce yutulmaz. Loglar önekli ve amaçlı: `[scan]`, `[api]`, `[db]`, `[whatsapp]`, `[BLE]`.
 - Biçim mevcut kodla aynı: 2 boşluk girinti, çift tırnak, noktalı virgül, çok satırlı listelerde sondaki virgül; ESLint uyarısız.
 - Next.js: bileşenler varsayılan olarak **sunucu bileşeni**; `"use client"` yalnızca form durumu/etkileşim için. Expo: ekranlar `src/app/`, ekran olmayan her şey `src/components/` veya `src/lib/`.
 

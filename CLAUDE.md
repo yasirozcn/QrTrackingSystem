@@ -31,7 +31,7 @@ Sizin işiniz, görevi **referans projeyle aynı yapıda** (görev/prompt refera
 - **Referans depodaki belgeler bu proje için geçerli değildir** (yerel Docker, `db:reset` vb.). Referanstan yalnızca kaynak kod alınır; kurallar bu depodaki AGENTS.md/CLAUDE.md'dir.
 - **Dosya yapısı** (ayrıntı: kök AGENTS.md §3, alt projelerin AGENTS.md §2):
   ```
-  AdminPanel/   db/schema.sql · scripts/ · src/lib/{db/,config,auth,session,api,protocol,scan,sms}.ts · src/components/ · src/app/{login,(panel),api/mobile}/
+  AdminPanel/   db/schema.sql · scripts/ · src/lib/{db/,config,auth,session,api,protocol,scan,whatsapp}.ts · src/components/ · src/app/{login,(panel),api/mobile}/
   QrScannerApp/ src/app/(ekranlar) · src/components/{ui,icons,BluetoothGate}.tsx · src/lib/{config,api,session,device,protocol,ble} · modules/kiosk-beacon/ · tools/
   infra/dev-db/ ortak geliştirme veritabanı (dokunmayın — proje sahibi)
   ```

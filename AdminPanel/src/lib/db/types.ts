@@ -94,7 +94,7 @@ export interface AttendanceEvent {
   note: string | null;
 }
 
-export interface SmsMessage {
+export interface WhatsAppMessage {
   id: string;
   eventId: string;
   guardianId: string;
@@ -149,7 +149,7 @@ export interface Database {
   kiosks: Kiosk[];
   scanAttempts: ScanAttempt[];
   attendanceEvents: AttendanceEvent[];
-  smsMessages: SmsMessage[];
+  whatsAppMessages: WhatsAppMessage[];
   permissions: Permission[];
   adminUsers: AdminUser[];
   auditLogs: AuditLog[];

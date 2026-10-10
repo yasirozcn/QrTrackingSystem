@@ -173,7 +173,7 @@ Tüm ekranlar `Screen` içinde; üst gezinme `TopBar` (geri oku + küçük başl
 - QR `isOurQr` değilse istek gitmez, `hint` = "Bu QR kod okul kioskuna ait değil.". `config.bleRequired` ve taze jeton yoksa istek gitmez, `hint` = "Kiosk Bluetooth sinyali bekleniyor. Bluetooth'un açık olduğundan emin olup kioska yaklaşın.".
 - İstek: `{ qr, ble: taze ? { token, rssi } : null, timestamp: Date.now(), signature: requestSignature(deviceSecret, qr, token|null, timestamp), direction: chosenDirection }`.
 - `DIRECTION_REQUIRED` → yön seçimine dön (`hint` = sunucu mesajı). Diğer hata → hata ekranı: "Okutma kabul edilmedi" + mesaj + **Tekrar dene** / Geri.
-- Başarı ekranı (giriş yeşil, çıkış mavi zemin): ✓, "Giriş kaydedildi" / "Çıkış kaydedildi", büyük saat (`result.time`) + "Saat", "Bluetooth doğrulaması: sinyal yok / kiosk doğrulandı ✓ / jeton eşleşmedi ✗", `duplicate` ise "Bu işlem az önce zaten kaydedilmişti; velinize tekrar SMS gönderilmedi.", **Tamam** → geri.
+- Başarı ekranı (giriş yeşil, çıkış mavi zemin): ✓, "Giriş kaydedildi" / "Çıkış kaydedildi", büyük saat (`result.time`) + "Saat", "Bluetooth doğrulaması: sinyal yok / kiosk doğrulandı ✓ / jeton eşleşmedi ✗", `duplicate` ise "Bu işlem az önce zaten kaydedilmişti; velinize tekrar WhatsApp mesajı gönderilmedi.", **Tamam** → geri.
 - Her adım `bleLog(...)` ile loglanır (QR okundu + gönderilecek jeton, sunucu kabul/red).
 
 ### 4.2 `kiosk/[id].tsx` (kiosk ekranı)

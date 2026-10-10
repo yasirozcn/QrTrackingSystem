@@ -57,7 +57,7 @@ AdminPanel/
     │   ├── config.ts ⏳               ortam değişkenleri (tek yer)
     │   ├── auth.ts ⏳                 signToken, verifyToken, bearerClaims
     │   ├── api.ts ⏳                  ApiError, ok, handler, body, requireStudent, requireKioskAdmin, rateLimit, clientIp
-    │   ├── sms.ts ⏳          formatTime, formatDateTime, buildSmsBody, dispatchSms
+    │   ├── whatsapp.ts ⏳     formatTime, formatDateTime, buildWhatsAppBody, dispatchWhatsApp
     │   ├── session.ts ⏳              createWebSession, destroyWebSession, getWebAdmin, requireWebAdmin
     │   ├── protocol.ts ⏳             QR/BLE/imza — mobildeki ile birebir aynı kurallar
     │   └── scan.ts ⏳         REJECT_MESSAGES, ScanInput, ScanResult, processScan, manualEvent
@@ -80,7 +80,7 @@ AdminPanel/
         │   ├── kiosklar/page.tsx ⏳ · kiosklar/DeleteKioskButton.tsx ⏳ · kiosklar/AccountForms.tsx ⏳
         │   ├── hareketler/page.tsx ⏳
         │   ├── denemeler/page.tsx ⏳ · denetim/page.tsx ⏳
-        │   └── sms/page.tsx ⏳
+        │   └── whatsapp/page.tsx ⏳
         └── api/mobile/
             ├── config/route.ts ⏳
             ├── student/check-email/route.ts ⏳ · student/set-password/route.ts ⏳
@@ -119,7 +119,7 @@ export const GET = handler(async (req: Request) => {
 
 ### 3.1 Kurallar
 - Her zaman **parametreli sorgu** (`$1, $2`); kullanıcı girdisi SQL metnine eklenmez.
-- Birden çok tabloya yazan işlemler `tx()` içinde: `createStudent`, `setFirstPasswordAndBindDevice` (öğrenci satırı `FOR UPDATE` ile kilitlenir), `resetStudentDevice`, `createEventWithSms`.
+- Birden çok tabloya yazan işlemler `tx()` içinde: `createStudent`, `setFirstPasswordAndBindDevice` (öğrenci satırı `FOR UPDATE` ile kilitlenir), `resetStudentDevice`, `createEventWithWhatsApp`.
 - Satırlar `camel()` ile camelCase'e, `Date` değerleri ISO metne çevrilir. `bigint` (`time_slot`) sayı döner.
 - `insertScanAttempt`: kabul edilmiş aynı (cihaz, kiosk, dilim) ikinci kez yazılırsa tekil indeks hatası (`23505`) yakalanır ve kayıt `REJECTED/REPLAY` olarak yazılır.
 - `dashboardStats`: "bugün" Türkiye saatine göre.
@@ -128,7 +128,7 @@ export const GET = handler(async (req: Request) => {
 ### 3.2 Repo fonksiyonları (`src/lib/db/repo.ts`)
 
 **Hazır olanlar** (yeniden yazmayın, yalnızca çağırın):
-`newId, findStudentByEmail, getStudent, listStudents (StudentRow), createStudent, setStudentPassword, getActiveDevice, getActiveDeviceForStudent, BindError, setFirstPasswordAndBindDevice, resetStudentPassword, resetStudentDevice, findAdminByEmail, getAdmin, listKiosks, getKiosk, touchKiosk, createKiosk, setKioskStatus, insertScanAttempt, isReplay, lastEventForStudent, createEventWithSms, updateSms, getEvent, reviewEvent, listEvents (EventRow), listScanAttempts (AttemptRow), listKioskAttempts, listSms, dashboardStats, addAudit, listAudit, dbHealth`.
+`newId, findStudentByEmail, getStudent, listStudents (StudentRow), createStudent, setStudentPassword, getActiveDevice, getActiveDeviceForStudent, BindError, setFirstPasswordAndBindDevice, resetStudentPassword, resetStudentDevice, findAdminByEmail, getAdmin, listKiosks, getKiosk, touchKiosk, createKiosk, setKioskStatus, insertScanAttempt, isReplay, lastEventForStudent, createEventWithWhatsApp, updateWhatsAppMessage, getEvent, reviewEvent, listEvents (EventRow), listScanAttempts (AttemptRow), listKioskAttempts, listWhatsAppMessages, dashboardStats, addAudit, listAudit, dbHealth`.
 
 **Eklenecek 4 fonksiyon** (referanstaki `repo.ts` ile birebir aynı; ekleme yerleri referanstaki gibi):
 ```ts
@@ -169,7 +169,7 @@ export async function deleteKiosk(id: string): Promise<boolean> {
 | `kiosks` | name, secret (32 bayt hex), status `ACTIVE/DISABLED`, last_seen_at | **yön kolonu yok** |
 | `scan_attempts` | device_id, student_id, kiosk_id, time_slot, ble_token, ble_rssi, ble_ok, integrity_ok, result `ACCEPTED/REJECTED`, reject_reason | (device_id, kiosk_id, time_slot) ACCEPTED için tekil; öğrenci/kiosk silinince SET NULL |
 | `attendance_events` | student_id, direction `IN/OUT`, occurred_at, source `APP/MANUAL/OFFLINE`, kiosk_id, scan_attempt_id, review_status `UNREVIEWED/OK/SUSPICIOUS`, reviewed_by, note | öğrenci silinince CASCADE; kiosk silinince SET NULL |
-| `sms_messages` | event_id, guardian_id, phone, body, status `QUEUED/SENT/DELIVERED/FAILED/MOCK_SENT`, provider_message_id, attempt_count, sent_at, delivered_at | (event_id, guardian_id) tekil; olay silinince CASCADE |
+| `wp_messages` | event_id, guardian_id, phone, body, status `QUEUED/SENT/DELIVERED/FAILED/MOCK_SENT`, provider_message_id, attempt_count, sent_at, delivered_at | (event_id, guardian_id) tekil; olay silinince CASCADE |
 | `permissions` | izin kayıtları (kullanılmıyor) | |
 | `admin_users` | full_name, email, role `ADMIN/KIOSK`, password_hash, two_factor_enabled | `lower(email)` tekil |
 | `audit_logs` | admin_user_id (FK değil), action, entity, entity_id, before_value/after_value (jsonb) | |
@@ -192,12 +192,12 @@ Sayfalar sunucu bileşenidir, veriyi doğrudan repo'dan okur ve `export const dy
 | `/ogrenciler` | `(panel)/ogrenciler/page.tsx` + `StudentForms.tsx` | `listStudents()` | Tablo (Öğrenci · E-posta · Veli · Durum · Cihaz · İşlemler) + "Yeni öğrenci ekle" formu |
 | `/kiosklar` | `(panel)/kiosklar/page.tsx` + `DeleteKioskButton.tsx` + `AccountForms.tsx` | `listKiosks()`, `listKioskAccounts()` | Kiosk tablosu (Ad · Durum · Son sinyal · Devre dışı bırak/Etkinleştir + Sil), "Yeni kiosk" formu, "Kiosk tablet hesapları" tablosu (Ad · E-posta · şifre sıfırlama formu) + "Yeni kiosk hesabı" formu |
 | `/denemeler` | `(panel)/denemeler/page.tsx` | `listScanAttempts(true, 300)` | "Reddedilen okutmalar": Zaman · Öğrenci · Kiosk · Neden (kod rozeti + `REJECT_MESSAGES` açıklaması) · BLE ("doğru"/"hatalı" + " · -60 dBm", jeton yoksa "yok") |
-| `/sms` | `(panel)/sms/page.tsx` | `listSms(300)` | Açıklama: `mock` ise "Test modu: SMS'ler gerçekten gönderilmez, yalnızca burada ve sunucu konsolunda görünür." değilse "Sağlayıcı: …". Tablo: Zaman · Öğrenci · Telefon · Mesaj · Durum (FAILED kırmızı, QUEUED sarı, diğerleri yeşil) |
+| `/whatsapp` | `(panel)/whatsapp/page.tsx` | `listWhatsAppMessages(300)` | Açıklama: `mock` ise "Test modu: WhatsApp mesajları gerçekten gönderilmez, yalnızca burada ve sunucu konsolunda görünür." değilse "Sağlayıcı: …". Tablo: Zaman · Öğrenci · Telefon · Mesaj · Durum (FAILED kırmızı, QUEUED sarı, diğerleri yeşil) |
 | `/denetim` | `(panel)/denetim/page.tsx` | `listAudit(300)` | Zaman · Kim (`adminName ?? "Öğrenci uygulaması"`) · İşlem · Kayıt (`entity · entityId`) · Ayrıntı (`afterValue` JSON, tek satır kısaltılmış) |
 
-Menü (`NavLinks.tsx`, bu sırayla): Canlı durum `/` · Giriş-çıkışlar `/hareketler` · Öğrenciler `/ogrenciler` · Kiosklar `/kiosklar` · Reddedilen okutmalar `/denemeler` · SMS kayıtları `/sms` · Denetim kaydı `/denetim`. Aktif bağlantı: `/` için tam eşleşme, diğerleri `startsWith`. İkon yolları referanstaki `NavLinks.tsx`'ten alınır.
+Menü (`NavLinks.tsx`, bu sırayla): Canlı durum `/` · Giriş-çıkışlar `/hareketler` · Öğrenciler `/ogrenciler` · Kiosklar `/kiosklar` · Reddedilen okutmalar `/denemeler` · WhatsApp kayıtları `/whatsapp` · Denetim kaydı `/denetim`. Aktif bağlantı: `/` için tam eşleşme, diğerleri `startsWith`. İkon yolları referanstaki `NavLinks.tsx`'ten alınır.
 
-Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/sms.ts`).
+Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/whatsapp.ts`).
 
 ### 4.2 Server Action'lar (`src/app/(panel)/actions.ts` — dosyanın başında `"use server";`)
 
@@ -230,7 +230,7 @@ Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/sms.ts`).
 - Kimlik: `requireStudent(req)` / `requireKioskAdmin(req)`. `GET /student/me` ayrıca cihazın hâlâ ACTIVE ve o öğrenciye bağlı olduğunu kontrol eder (`DEVICE_REVOKED`).
 - `rateLimit` (bellek içi, 10 dk pencere): check-email 30/IP · set-password 8/e-posta + 30/IP · login 10/e-posta + 50/IP · admin login 10/e-posta + 30/IP. Anahtarlar: `check:<ip>`, `setpw:<email>`, `setpw-ip:<ip>`, `login:<email>`, `login-ip:<ip>`, `admin:<email>`, `admin-ip:<ip>` (e-posta küçük harf).
 - Okutma kuralları yalnızca `scan.ts`'te; route ince kalır. Her okutma sunucu loguna tek satır: `[scan] KABUL (IN) · öğrenci … · kiosk … · BLE <jeton> RSSI -60 → EŞLEŞTİ`.
-- SMS gönderimi yanıtı bekletmez: `void dispatchSms(sms)`.
+- WhatsApp gönderimi yanıtı bekletmez: `void dispatchWhatsApp(messages)`.
 
 ### 5.2 Hata mesajları kataloğu (birebir bu metinler)
 
@@ -261,9 +261,9 @@ Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/sms.ts`).
 
 ### 5.3 `processScan` ayrıntıları (referansla aynı — atlanmaması gerekenler)
 - BLE: jeton geldiyse `bleOk` = QR diliminin, bir önceki veya bir sonraki dilimin jetonuyla `safeEqual`. `bleOk` false ise **yalnızca** `config.bleRequired` iken `BLE_MISMATCH` reddi; değilse okutma kabul edilir ve `bleVerified: false` döner.
-- Çift okutma: son olaydan `duplicateWindowSeconds` geçmediyse `ACCEPTED` deneme yazılır, son olay `duplicate: true` ile döner (yön değişmez, SMS yok). Bu kontrol yön kontrolünden **önce** yapılır.
+- Çift okutma: son olaydan `duplicateWindowSeconds` geçmediyse `ACCEPTED` deneme yazılır, son olay `duplicate: true` ile döner (yön değişmez, WhatsApp mesajı yok). Bu kontrol yön kontrolünden **önce** yapılır.
 - `DIRECTION_REQUIRED` hiçbir tabloya yazılmaz.
-- Kabulde: `insertScanAttempt(ACCEPTED)` → dönen kayıt `REJECTED` ise (eş zamanlı tekrar) `REPLAY` döndür → `touchKiosk` → `occurredAt = new Date().toISOString()` → `createEventWithSms(...)` → `void dispatchSms(sms)`.
+- Kabulde: `insertScanAttempt(ACCEPTED)` → dönen kayıt `REJECTED` ise (eş zamanlı tekrar) `REPLAY` döndür → `touchKiosk` → `occurredAt = new Date().toISOString()` → `createEventWithWhatsApp(...)` → `void dispatchWhatsApp(messages)`.
 
 ## 6. Ortam değişkenleri (`.env.example` → `.env.local`)
 
@@ -278,8 +278,8 @@ Tarih/saat gösterimi her yerde `formatDateTime(iso)` (`src/lib/sms.ts`).
 | `AUTH_SECRET` | JWT anahtarı. Kimlik doğrulama (giriş kartları) yazıldığından itibaren gerekir. Herkes kendisi üretir (`openssl rand -hex 32`), paylaşılmaz; canlıda zorunlu (kök AGENTS.md §5.1) |
 | `BLE_REQUIRED` | `true`: BLE jetonu zorunlu (varsayılan `false`) |
 | `DUPLICATE_WINDOW_SECONDS` | Çift okutma penceresi (varsayılan 120) |
-| `SMS_PROVIDER` | `mock` |
-| `SCHOOL_SHORT_NAME` | SMS imzası (`"Izmir Fen"`) |
+| `WHATSAPP_PROVIDER` | `mock` |
+| `SCHOOL_SHORT_NAME` | WhatsApp mesajı imzası (`"Izmir Fen"`) |
 | `COOKIE_SECURE` | Yerelde (http) `false`, canlıda `true` |
 
 `.env.local` değiştirildiğinde `npm run dev` yeniden başlatılmalıdır.
@@ -312,7 +312,7 @@ curl -s -X POST localhost:3000/api/mobile/student/check-email -H 'Content-Type: 
 Referanstaki testin **aynı kontrollerini** yapar; farkı ortak veritabanında **kendi verisini oluşturup silmesidir**:
 - Başta `pg` ile (aynı `DATABASE_URL`, `DATABASE_SSL*` ayarları): benzersiz son ekli (`randomBytes(4).toString("hex")`) test öğrencisi `test+e2e-<ek>@izmirfen.test` (+ velisi), ikinci test öğrencisi (DEVICE_TAKEN kontrolü için), test kiosku `TEST e2e-<ek>`, `role=KIOSK` test hesabı (rastgele şifre, `bcryptjs` ile özet).
 - Kiosk listesinden **kendi test kioskunu** id ile seçer (ilk kioskun değil).
-- Sonda `try/finally` ile **yalnızca kendi oluşturduklarını** siler, şu sırayla: `scan_attempts WHERE device_id = ANY($1)` → `students WHERE id = ANY($1)` (devices, attendance_events, sms_messages, student_guardians CASCADE) → `guardians WHERE id = ANY($1)` → `kiosks WHERE id = $1` → `admin_users WHERE id = $1`. `audit_logs` silinmez.
+- Sonda `try/finally` ile **yalnızca kendi oluşturduklarını** siler, şu sırayla: `scan_attempts WHERE device_id = ANY($1)` → `students WHERE id = ANY($1)` (devices, attendance_events, wp_messages, student_guardians CASCADE) → `guardians WHERE id = ANY($1)` → `kiosks WHERE id = $1` → `admin_users WHERE id = $1`. `audit_logs` silinmez.
 - `package.json`: `"test:e2e": "node --env-file=.env.local scripts/e2e-test.mjs"`; adres `API_URL` (varsayılan `http://localhost:3000`).
 
 ## 9. Yapılmaması gerekenler

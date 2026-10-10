@@ -31,7 +31,7 @@ Veritabanı **kimsenin bilgisayarında değildir**. Herkes AWS'deki **ortak geli
    Beklenen çıktı:
    ```
    Bağlandı (45 ms): izmirfen_app@izmirfen · PostgreSQL 17.x · SSL: açık
-   Tablolar (11): admin_users, attendance_events, audit_logs, devices, guardians, kiosks, permissions, scan_attempts, sms_messages, student_guardians, students
+   Tablolar (11): admin_users, attendance_events, audit_logs, devices, guardians, kiosks, permissions, scan_attempts, student_guardians, students, wp_messages
    Şema değiştirme yetkisi: yok (ekip kullanıcısı — beklenen)
    ```
 3. Uygulamayı çalıştırın: `npm run dev` → http://localhost:3000 "Ortak veritabanına bağlı" ve satır sayıları; http://localhost:3000/api/health → JSON.

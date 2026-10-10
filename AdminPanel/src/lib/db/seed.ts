@@ -35,7 +35,7 @@ export async function buildSeed(): Promise<Database> {
     ],
     scanAttempts: [],
     attendanceEvents: [],
-    smsMessages: [],
+    whatsAppMessages: [],
     permissions: [],
     adminUsers: [],
     auditLogs: [],

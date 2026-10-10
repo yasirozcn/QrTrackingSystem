@@ -13,8 +13,8 @@ import type {
   Guardian,
   Kiosk,
   ScanAttempt,
-  SmsMessage,
   Student,
+  WhatsAppMessage,
 } from "./types";
 
 export const newId = (prefix: string) => `${prefix}_${randomBytes(8).toString("hex")}`;
@@ -220,16 +220,16 @@ export async function lastEventForStudent(studentId: string): Promise<Attendance
   return first(await q<AttendanceEvent>("SELECT * FROM attendance_events WHERE student_id = $1 ORDER BY occurred_at DESC LIMIT 1", [studentId]));
 }
 
-/** Kabul edilen bir giriş/çıkışı kaydeder: olay + öğrenci durumu + veli SMS'leri tek transaction'da. */
-export async function createEventWithSms(input: {
+/** Kabul edilen bir giriş/çıkışı kaydeder: olay + öğrenci durumu + veli WhatsApp mesajları tek transaction'da. */
+export async function createEventWithWhatsApp(input: {
   studentId: string;
   direction: Direction;
   source: AttendanceEvent["source"];
   kioskId: string | null;
   scanAttemptId: string | null;
   note?: string | null;
-  buildSms: (student: Student) => string;
-}): Promise<{ event: AttendanceEvent; sms: SmsMessage[] }> {
+  buildMessage: (student: Student) => string;
+}): Promise<{ event: AttendanceEvent; messages: WhatsAppMessage[] }> {
   return tx(async (c) => {
     const s = (await c.query("SELECT * FROM students WHERE id = $1 FOR UPDATE", [input.studentId])).rows[0];
     if (!s) throw new Error("Öğrenci bulunamadı.");
@@ -258,14 +258,14 @@ export async function createEventWithSms(input: {
         [student.id, input.direction],
       )
     ).rows as { id: string; phone: string }[];
-    const sms: SmsMessage[] = [];
+    const messages: WhatsAppMessage[] = [];
     for (const g of guardians) {
-      const msg: SmsMessage = {
-        id: newId("sms"),
+      const msg: WhatsAppMessage = {
+        id: newId("wpm"),
         eventId: event.id,
         guardianId: g.id,
         phone: g.phone,
-        body: input.buildSms(student),
+        body: input.buildMessage(student),
         providerMessageId: null,
         status: "QUEUED",
         attemptCount: 0,
@@ -273,14 +273,14 @@ export async function createEventWithSms(input: {
         deliveredAt: null,
         createdAt: now,
       };
-      await insertRow(c, "sms_messages", msg);
-      sms.push(msg);
+      await insertRow(c, "wp_messages", msg);
+      messages.push(msg);
     }
-    return { event, sms };
+    return { event, messages };
   });
 }
 
-const SMS_COLUMNS: Record<string, string> = {
+const WHATSAPP_COLUMNS: Record<string, string> = {
   providerMessageId: "provider_message_id",
   status: "status",
   attemptCount: "attempt_count",
@@ -289,11 +289,11 @@ const SMS_COLUMNS: Record<string, string> = {
   body: "body",
 };
 
-export async function updateSms(id: string, patch: Partial<SmsMessage>): Promise<void> {
-  const entries = Object.entries(patch).filter(([k]) => k in SMS_COLUMNS);
+export async function updateWhatsAppMessage(id: string, patch: Partial<WhatsAppMessage>): Promise<void> {
+  const entries = Object.entries(patch).filter(([k]) => k in WHATSAPP_COLUMNS);
   if (!entries.length) return;
-  const sets = entries.map(([k], i) => `${SMS_COLUMNS[k]} = $${i + 2}`).join(", ");
-  await q(`UPDATE sms_messages SET ${sets} WHERE id = $1`, [id, ...entries.map(([, v]) => v)]);
+  const sets = entries.map(([k], i) => `${WHATSAPP_COLUMNS[k]} = $${i + 2}`).join(", ");
+  await q(`UPDATE wp_messages SET ${sets} WHERE id = $1`, [id, ...entries.map(([, v]) => v)]);
 }
 
 export async function getEvent(id: string): Promise<AttendanceEvent | null> {
@@ -367,10 +367,10 @@ export function listKioskAttempts(kioskId: string, since: string, limit = 20): P
   );
 }
 
-export function listSms(limit = 200): Promise<(SmsMessage & { studentName: string })[]> {
+export function listWhatsAppMessages(limit = 200): Promise<(WhatsAppMessage & { studentName: string })[]> {
   return q(
     `SELECT m.*, COALESCE(s.first_name || ' ' || s.last_name, '-') AS student_name
-     FROM sms_messages m
+     FROM wp_messages m
      LEFT JOIN attendance_events e ON e.id = m.event_id
      LEFT JOIN students s ON s.id = e.student_id
      ORDER BY m.created_at DESC

@@ -89,7 +89,20 @@ CREATE TABLE IF NOT EXISTS attendance_events (
 CREATE INDEX IF NOT EXISTS attendance_events_student_idx ON attendance_events (student_id, occurred_at DESC);
 CREATE INDEX IF NOT EXISTS attendance_events_time_idx ON attendance_events (occurred_at DESC);
 
-CREATE TABLE IF NOT EXISTS sms_messages (
+-- Geçiş: veli bildirimleri SMS yerine WhatsApp ile gider. Eski kurulumdaki sms_messages tablosu
+-- verisiyle birlikte wp_messages olarak yeniden adlandırılır (kısıt adları da), böylece yeni kurulumla aynı olur.
+DO $$
+DECLARE c record;
+BEGIN
+  IF to_regclass('public.sms_messages') IS NOT NULL AND to_regclass('public.wp_messages') IS NULL THEN
+    ALTER TABLE sms_messages RENAME TO wp_messages;
+    FOR c IN SELECT conname FROM pg_constraint WHERE conrelid = 'public.wp_messages'::regclass AND conname LIKE 'sms\_messages\_%' LOOP
+      EXECUTE format('ALTER TABLE wp_messages RENAME CONSTRAINT %I TO %I', c.conname, 'wp_messages_' || substr(c.conname, 14));
+    END LOOP;
+  END IF;
+END $$;
+
+CREATE TABLE IF NOT EXISTS wp_messages (
   id                  text PRIMARY KEY,
   event_id            text NOT NULL REFERENCES attendance_events (id) ON DELETE CASCADE,
   guardian_id         text NOT NULL REFERENCES guardians (id) ON DELETE CASCADE,
@@ -101,7 +114,7 @@ CREATE TABLE IF NOT EXISTS sms_messages (
   sent_at             timestamptz,
   delivered_at        timestamptz,
   created_at          timestamptz NOT NULL DEFAULT now(),
-  -- Kural: bir olay için bir veliye tek SMS (tekrar denemede çift SMS gitmez).
+  -- Kural: bir olay için bir veliye tek WhatsApp mesajı (tekrar denemede çift mesaj gitmez).
   UNIQUE (event_id, guardian_id)
 );
 
